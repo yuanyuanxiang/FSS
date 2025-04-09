@@ -1,0 +1,134 @@
+{
+    "Plugin": [
+        {
+            "Endpoint": "/api/challenge/{serialNumber}",
+            "Description": "Generate and return a random challenge for device authentication",
+            "Method": "GET",
+            "Plugins": [
+                {
+                    "Name": "Challenge_Gen",
+                    "Index": 1
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/verify",
+            "Method": "POST",
+            "Description": "Verify HMAC signature of the challenge and authorize device if allowance counter > 0",
+            "Plugins": [
+                {
+                    "Name": "HttpData_Parse",
+                    "Index": 0
+                },
+                {
+                    "Name": "Challenge_Verify",
+                    "Index": 1
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/register",
+            "Method": "POST",
+            "Description": "Register device public key with serial number after successful verification",
+            "Plugins": [
+                {
+                    "Name": "HttpData_Parse",
+                    "Index": 0
+                },
+                {
+                    "Name": "Device_Register",
+                    "Index": 1
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/firmware/{version}",
+            "Method": "GET",
+            "Description": "Deliver signed firmware update to authenticated devices",
+            "Plugins": [
+                {
+                    "Name": "HttpData_Parse",
+                    "Index": 0
+                },
+                {
+                    "Name": "Challenge_Verify",
+                    "Index": 1
+                },
+                {
+                    "Name": "Firmware_Update",
+                    "Index": 2
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/update-allowance",
+            "Method": "POST",
+            "Description": "Update the device registration allowance counter",
+            "Plugins": [
+                {
+                    "Name": "HttpData_Parse",
+                    "Index": 0
+                },
+                {
+                    "Name": "Allowance_Update",
+                    "Index": 1
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/devices",
+            "Method": "GET",
+            "Description": "List all registered devices with their status",
+            "Plugins": [
+                {
+                    "Name": "Device_List",
+                    "Index": 1
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/logs/updates",
+            "Method": "GET",
+            "Description": "Retrieve logs of successful updates",
+            "Plugins": [
+                {
+                    "Name": "Audit_Logs",
+                    "Index": 1
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/logs/incidents",
+            "Method": "GET",
+            "Description": "Retrieve logs of security incidents and rejected attempts",
+            "Plugins": [
+                {
+                    "Name": "Audit_Logs",
+                    "Index": 1
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/devices/{serialNumber}/block",
+            "Method": "POST",
+            "Description": "Manually block a specific device",
+            "Plugins": [
+                {
+                    "Name": "Device_Auth",
+                    "Index": 1
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/devices/{serialNumber}/authorize",
+            "Method": "POST",
+            "Description": "Manually authorize a specific device",
+            "Plugins": [
+                {
+                    "Name": "Device_Auth",
+                    "Index": 1
+                }
+            ]
+        }
+    ]
+}

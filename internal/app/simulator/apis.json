@@ -1,0 +1,82 @@
+{
+    "Plugin": [
+        {
+            "Endpoint": "/api/generate",
+            "Description": "Generate a batch of simulated devices",
+            "Method": "POST",
+            "Plugins": [
+                {
+                    "Name": "HttpData_Parse",
+                    "Index": 1
+                },
+                {
+                    "Name": "Device_Simulator",
+                    "Index": 2
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/devices/{serialNumber}/request-update",
+            "Method": "POST",
+            "Description": "Initiate update process for a specific device",
+            "Plugins": [
+                {
+                    "Name": "HttpData_Parse",
+                    "Index": 1
+                },
+                {
+                    "Name": "Request_Update",
+                    "Index": 2
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/devices/batch-update",
+            "Method": "POST",
+            "Description": "Initiate update process for a batch of devices",
+            "Plugins": [
+                {
+                    "Name": "HttpData_Parse",
+                    "Index": 1
+                },
+                {
+                    "Name": "Batch_Update",
+                    "Index": 2
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/devices/{serialNumber}",
+            "Method": "GET",
+            "Description": "Get status information for a specific device",
+            "Plugins": [
+                {
+                    "Name": "Device_Status",
+                    "Index": 1
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/simulate/replay/{serialNumber}",
+            "Method": "POST",
+            "Description": "Simulate a replay attack with a specific serial number",
+            "Plugins": [
+                {
+                    "Name": "Replay_Simulate",
+                    "Index": 1
+                }
+            ]
+        },
+        {
+            "Endpoint": "/api/devices/status",
+            "Method": "GET",
+            "Description": "Get status of all simulated devices",
+            "Plugins": [
+                {
+                    "Name": "Device_List",
+                    "Index": 1
+                }
+            ]
+        }
+    ]
+}
