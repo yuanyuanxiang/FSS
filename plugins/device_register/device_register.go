@@ -14,7 +14,6 @@ import (
 )
 
 type SessionManager interface {
-	IsVerifiedSess(serialNumber string) bool
 	VerifyAuthHeader(authHeader string) (string, error)
 }
 
@@ -77,12 +76,6 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	if cvt.ToString(request.Private["serial_number"]) != serialNumber {
 		response.WriteHeader(http.StatusBadRequest)
 		return fmt.Errorf("serial number mismatch")
-	}
-
-	// checjk if session is verified
-	if !p.sess.IsVerifiedSess(serialNumber) {
-		response.WriteHeader(http.StatusForbidden)
-		return fmt.Errorf("device not verified")
 	}
 
 	// check if device is already registered

@@ -29,6 +29,10 @@ import (
 	"github.com/yuanyuanxiang/fss/plugins/request_update"
 )
 
+const (
+	InitialVersion = "1.0.0"
+)
+
 // Simulator application
 type Simulator struct {
 	name    string // Module name
@@ -48,10 +52,16 @@ func (sim *Simulator) GetName() string {
 }
 
 // Generate specified number of devices
+// startSerial is the starting serial number for device generation
+// mimimum value is 0
+// master is the master address for device registration
+// Note: if the device already exists, it will be overwritten
+// After the device is generated, it will be registered to the master
+// The device will be registered in a separate goroutine
 func (sim *Simulator) GenerateDevices(master string, count int, startSerial int) error {
 	for i := 0; i < count; i++ {
 		id := i + startSerial
-		device, err := NewDevice(master, id, "1.0.0", common.SymmetricKey)
+		device, err := NewDevice(master, id, InitialVersion, common.SymmetricKey)
 		if err != nil {
 			sim.log.Printf("Failed to generate device %v: %v\n", id, err)
 			continue
@@ -68,11 +78,13 @@ func (sim *Simulator) GenerateDevices(master string, count int, startSerial int)
 }
 
 // Request update for a specific device
-func (sim *Simulator) UpdateDevice(serialNumber int) error {
+// Update the device firmware to the specified version
+// If the device is not found, an error will be returned
+func (sim *Simulator) UpdateDevice(serialNumber int, version string) error {
 	serialNumberStr := fmt.Sprintf("%010d", serialNumber)
 	for _, device := range sim.devices {
 		if device.SerialNumber == serialNumberStr {
-			return device.Update("1.0.1")
+			return device.Update(version)
 		}
 	}
 	sim.log.Printf("Device with serial number %v not found.\n", serialNumber)
@@ -80,9 +92,9 @@ func (sim *Simulator) UpdateDevice(serialNumber int) error {
 }
 
 // Request updates for a range of devices
-func (sim *Simulator) BatchUpdate(startSerial, endSerial int) error {
+func (sim *Simulator) BatchUpdate(startSerial, endSerial int, version string) error {
 	for i := startSerial; i <= endSerial; i++ {
-		_ = sim.UpdateDevice(i)
+		_ = sim.UpdateDevice(i, version)
 	}
 	return nil
 }
@@ -118,6 +130,7 @@ func (sim *Simulator) GetDeviceList() ([]map[string]interface{}, error) {
 func (sim *Simulator) Replay(serialNumber int) error {
 	sim.log.Printf("Simulating replay attack for device %v\n", serialNumber)
 	// Simulate replay logic here
+	// For example, you can send a request to the device with the same parameters as before
 	return nil
 }
 
@@ -137,12 +150,12 @@ func (sim *Simulator) Setup(ctx context.Context, args []string) error {
 	f := flag.NewFlagSet(sim.name, flag.ContinueOnError)
 	f.StringVar(&sim.cfg, "config", "D:\\github\\FSS\\internal\\app\\simulator\\apis.json", "Path to the configuration file")
 	generateCount := f.Int("generate", 0, "Generate a specified number of devices")
-	startSerial := f.Int("start-serial", 0, "Starting serial number for device generation")
-	updateSerial := f.Int("update", 0, "Request update for a specific device")
+	startSerial := f.Int("start-serial", -1, "Starting serial number for device generation")
+	updateSerial := f.Int("update", -1, "Request update for a specific device")
 	batchUpdateRange := f.String("batch-update", "", "Request updates for a range of devices (e.g., '100-200')")
-	statusSerial := f.Int("status", 0, "Show status of a specific device")
+	statusSerial := f.Int("status", -1, "Show status of a specific device")
 	listAll := f.Bool("list-all", false, "List all simulated devices with their status")
-	replaySerial := f.Int("simulate-replay", 0, "Simulate a replay attack for a specific device")
+	replaySerial := f.Int("simulate-replay", -1, "Simulate a replay attack for a specific device")
 	batchReplayRange := f.String("simulate-batch-replay", "", "Simulate batch replay attacks for a range of devices")
 	port := f.Int("port", 0, "Port for the simulator to run on")
 	// Parse command line arguments
@@ -152,44 +165,43 @@ func (sim *Simulator) Setup(ctx context.Context, args []string) error {
 	}
 
 	// Handle the different commands based on the flags
-	if *generateCount > 0 {
-		_ = sim.GenerateDevices("127.0.0.1:9000", *generateCount, *startSerial)
-	} else if *updateSerial > 0 {
-		_ = sim.UpdateDevice(*updateSerial)
-	} else if *batchUpdateRange != "" {
+	switch {
+	case *generateCount > 0 && *startSerial >= 0:
+		return sim.GenerateDevices("127.0.0.1:9000", *generateCount, *startSerial)
+	case *updateSerial > 0:
+		return sim.UpdateDevice(*updateSerial, "1.0.1")
+	case *batchUpdateRange != "":
 		rangeParts := strings.Split(*batchUpdateRange, "-")
-		if len(rangeParts) == 2 {
-			start, _ := strconv.Atoi(rangeParts[0])
-			end, _ := strconv.Atoi(rangeParts[1])
-			_ = sim.BatchUpdate(start, end)
-		} else {
-			fmt.Println("Invalid batch update range. Please use 'startSerial-endSerial'.")
+		if len(rangeParts) != 2 {
+			return fmt.Errorf("invalid batch update range. Please use 'startSerial-endSerial'")
 		}
-	} else if *statusSerial > 0 {
+		start, _ := strconv.Atoi(rangeParts[0])
+		end, _ := strconv.Atoi(rangeParts[1])
+		if start < 0 || end < 0 || end < start {
+			return fmt.Errorf("invalid batch update range. Please use 'startSerial-endSerial'")
+		}
+		return sim.BatchUpdate(start, end, "1.0.1")
+	case *statusSerial >= 0:
 		s, err := sim.GetDeviceStatus(*statusSerial)
 		if err == nil {
 			fmt.Println(s)
 		}
-	} else if *listAll {
-		a, err := sim.GetDeviceList()
-		if err == nil {
-			fmt.Println(a)
-		}
-	} else if *replaySerial > 0 {
-		_ = sim.Replay(*replaySerial)
-	} else if *batchReplayRange != "" {
+		return err
+	case *listAll:
+	case *replaySerial >= 0:
+		return sim.Replay(*replaySerial)
+	case *batchReplayRange != "":
 		rangeParts := strings.Split(*batchReplayRange, "-")
-		if len(rangeParts) == 2 {
-			start, _ := strconv.Atoi(rangeParts[0])
-			end, _ := strconv.Atoi(rangeParts[1])
-			sim.simulateBatchReplay(start, end)
-		} else {
-			fmt.Println("Invalid batch replay range. Please use 'startSerial-endSerial'.")
+		if len(rangeParts) != 2 {
+			return fmt.Errorf("invalid batch replay range. Please use 'startSerial-endSerial'")
 		}
-	} else if *port > 0 {
+		start, _ := strconv.Atoi(rangeParts[0])
+		end, _ := strconv.Atoi(rangeParts[1])
+		sim.simulateBatchReplay(start, end)
+	case *port > 0:
 		sim.port = *port
 		fmt.Printf("Simulator will run on port %d\n", sim.port)
-	} else {
+	default:
 		fmt.Println("Usage: simulator --generate=<count> --start-serial=<number>")
 		fmt.Println("       simulator --update=<serialNumber>")
 		fmt.Println("       simulator --batch-update=<startSerial>-<endSerial>")
@@ -199,6 +211,7 @@ func (sim *Simulator) Setup(ctx context.Context, args []string) error {
 		fmt.Println("       simulator --simulate-batch-replay=<startSerial>-<endSerial>")
 		os.Exit(1)
 	}
+
 	return nil
 }
 

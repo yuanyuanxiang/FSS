@@ -15,7 +15,7 @@ import (
 )
 
 type DeviceSimulator interface {
-	UpdateDevice(startSerial int) error
+	UpdateDevice(startSerial int, version string) error
 }
 
 type factory struct {
@@ -50,7 +50,12 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 		response.WriteHeader(http.StatusBadRequest)
 		return fmt.Errorf("serial number is required")
 	}
-	err := p.sim.UpdateDevice(cvt.ToInt(serialNumber))
+	version := cvt.ToString(request.Private["version"])
+	if version == "" {
+		response.WriteHeader(http.StatusBadRequest)
+		return fmt.Errorf("version is required")
+	}
+	err := p.sim.UpdateDevice(cvt.ToInt(serialNumber), version)
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		return fmt.Errorf("failed to update devices: %v", err)

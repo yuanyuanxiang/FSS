@@ -16,8 +16,8 @@ import (
 )
 
 type SessionManager interface {
-	IsValidSess(serialNumber string) bool
-	MarkSessVerified(serialNumber string)
+	IsValidSess(serialNumber, challenge string) bool
+	MarkSessVerified(serialNumber, challenge string) bool
 	GenerateAuthHeader(serialNumber string) string
 }
 
@@ -85,11 +85,6 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	signature := cvt.ToString(request.Private["signature"])
 	challenge := cvt.ToString(request.Private["challenge"])
 
-	if !p.sess.IsValidSess(serialNumber) {
-		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("invalid or expired session")
-	}
-
 	// This is a simple example of signature verification.
 	// In a real-world scenario, you would use a more secure method to verify the signature.
 	valid := common.VerifySignature(challenge, p.secret, signature)
@@ -98,8 +93,16 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 		return fmt.Errorf("invalid signature")
 	}
 
-	// mark the session as verified
-	p.sess.MarkSessVerified(serialNumber)
+	if !p.sess.IsValidSess(serialNumber, challenge) {
+		response.WriteHeader(http.StatusBadRequest)
+		return fmt.Errorf("invalid or expired session")
+	}
+
+	// mark the session as verified. only can verify once.
+	if !p.sess.MarkSessVerified(serialNumber, challenge) {
+		response.WriteHeader(http.StatusBadRequest)
+		return fmt.Errorf("invalid or verified session")
+	}
 
 	response.Data = map[string]interface{}{
 		"serial_number": serialNumber,

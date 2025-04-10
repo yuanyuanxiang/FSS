@@ -185,7 +185,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "\t{\r\n\t\t\"increase_allowance\": 10\r\n\t}",
+					"raw": "\t{\r\n\t\t\"version\": \"1.0.1\"\r\n\t}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -203,6 +203,35 @@
 						"devices",
 						"0000000001",
 						"request-update"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Batch_Update",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "\t{\r\n        \"start_serial\": 0,\r\n        \"end_serial\" :4,\r\n\t\t\"version\": \"1.0.1\"\r\n\t}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{server}}:{{port}}/api/devices/batch-update",
+					"host": [
+						"{{server}}"
+					],
+					"port": "{{port}}",
+					"path": [
+						"api",
+						"devices",
+						"batch-update"
 					]
 				}
 			},

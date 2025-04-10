@@ -39,7 +39,7 @@ type UpdateRecord struct {
 
 // Device represents the device with various fields including keys
 type Device struct {
-	serverPulickKey *ecdh.PublicKey  // Server public key for encryption
+	ServerPublicKey *ecdh.PublicKey  `json:"server_pubkey"`  // Server public key for encryption
 	MasterAddress   string           `json:"master_address"` // Master address of the device
 	SerialNumber    string           `json:"serial_number"`
 	FirmwareVersion string           `json:"firmware_version"`
@@ -121,13 +121,18 @@ func (d *Device) Register() error {
 	if err != nil {
 		return err
 	}
+	// save the server public key
 	publicKey := cvt.ToString(m["public_key"])
-	d.serverPulickKey, err = common.Base64ToPublicKey(publicKey)
-	return err
+	d.ServerPublicKey, err = common.Base64ToPublicKey(publicKey)
+	if err != nil {
+		return err
+	}
+	log.Infof("Device %s registered to '%s' succeed\n", d.SerialNumber, d.MasterAddress)
+	return d.Save()
 }
 
 func (d *Device) Update(version string) error {
-	if d.serverPulickKey == nil {
+	if d.ServerPublicKey == nil {
 		return fmt.Errorf("server public key is nil")
 	}
 	// get challenge
@@ -174,7 +179,7 @@ func (d *Device) Update(version string) error {
 	}
 	mac := cvt.ToString(m["signature"])
 	// derive shared secret
-	sharedSecret, _ := d.PrivateKey.ECDH(d.serverPulickKey)
+	sharedSecret, _ := d.PrivateKey.ECDH(d.ServerPublicKey)
 	encKey, macKey := common.DeriveKeys(sharedSecret)
 	// check signature
 	if !common.VerifySignature(base64Data, string(macKey), mac) {
@@ -185,6 +190,13 @@ func (d *Device) Update(version string) error {
 	if err != nil {
 		return fmt.Errorf("failed to decrypt firmware: %v", err)
 	}
+	// mark device as updated
+	d.State = Updated
+	d.UpdateHistory = append(d.UpdateHistory, UpdateRecord{
+		Version:   version,
+		Timestamp: time.Now(),
+	})
+	// save firmware data to file
 	d.FirmwareVersion = version
 	log.Printf("Device %s updated to firmware version %s\n", d.SerialNumber, string(firmwareData))
 
@@ -194,7 +206,7 @@ func (d *Device) Update(version string) error {
 // MarshalJSON customizes the JSON marshaling for Device
 func (d *Device) MarshalJSON() ([]byte, error) {
 	type Alias Device // Create an alias to avoid recursion in the Marshal method
-	var pubKeyBase64, privKeyBase64 string
+	var pubKeyBase64, privKeyBase64, svrPubkey string
 
 	// Marshal public key as base64-encoded string
 	if d.PublicKey != nil {
@@ -205,16 +217,20 @@ func (d *Device) MarshalJSON() ([]byte, error) {
 	if d.PrivateKey != nil {
 		privKeyBase64 = common.PrivateKeyToBase64(d.PrivateKey)
 	}
-
+	if d.ServerPublicKey != nil {
+		svrPubkey = common.PublicKeyToBase64(d.ServerPublicKey)
+	}
 	// Return the struct with the keys encoded as strings
 	return json.Marshal(&struct {
 		*Alias
-		PrivateKey string `json:"private_key,omitempty"`
-		PublicKey  string `json:"public_key,omitempty"`
+		PrivateKey      string `json:"private_key,omitempty"`
+		PublicKey       string `json:"public_key,omitempty"`
+		ServerPublicKey string `json:"server_pubkey,omitempty"`
 	}{
-		Alias:      (*Alias)(d),
-		PrivateKey: privKeyBase64,
-		PublicKey:  pubKeyBase64,
+		Alias:           (*Alias)(d),
+		PrivateKey:      privKeyBase64,
+		PublicKey:       pubKeyBase64,
+		ServerPublicKey: svrPubkey,
 	})
 }
 
@@ -223,8 +239,9 @@ func (d *Device) UnmarshalJSON(data []byte) error {
 	type Alias Device // Create an alias to avoid recursion in the Unmarshal method
 	aux := &struct {
 		*Alias
-		PrivateKey string `json:"private_key,omitempty"`
-		PublicKey  string `json:"public_key,omitempty"`
+		PrivateKey      string `json:"private_key,omitempty"`
+		PublicKey       string `json:"public_key,omitempty"`
+		ServerPublicKey string `json:"server_pubkey,omitempty"`
 	}{
 		Alias: (*Alias)(d),
 	}
@@ -252,6 +269,14 @@ func (d *Device) UnmarshalJSON(data []byte) error {
 		}
 		// Set the public key
 		d.PublicKey = pubKey
+	}
+
+	if aux.ServerPublicKey != "" {
+		pubKey, err := common.Base64ToPublicKey(aux.ServerPublicKey)
+		if err != nil {
+			return fmt.Errorf("error decoding server public key: %v", err)
+		}
+		d.ServerPublicKey = pubKey
 	}
 
 	return nil

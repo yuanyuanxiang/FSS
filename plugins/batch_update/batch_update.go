@@ -14,7 +14,7 @@ import (
 )
 
 type DeviceSimulator interface {
-	BatchUpdate(startSerial, endSerial int) error
+	BatchUpdate(startSerial, endSerial int, version string) error
 }
 
 type factory struct {
@@ -47,17 +47,27 @@ Request:
 
 	{
 		"start_serial": 1,
-		"end_serial": 100
+		"end_serial": 100,
+		"version": "1.0.1"
 	}
 */
 func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) error {
 	startSerial := cvt.ToInt(request.Private["start_serial"])
 	endSerial := cvt.ToInt(request.Private["end_serial"])
-	if startSerial <= 0 || endSerial <= 0 {
+	if startSerial < 0 || endSerial < 0 {
 		response.WriteHeader(http.StatusBadRequest)
 		return fmt.Errorf("start_serial and end_serial must be greater than 0")
 	}
-	err := p.sim.BatchUpdate(startSerial, endSerial)
+	if endSerial < startSerial {
+		response.WriteHeader(http.StatusBadRequest)
+		return fmt.Errorf("end_serial must be greater than start_serial")
+	}
+	version := cvt.ToString(request.Private["version"])
+	if version == "" {
+		response.WriteHeader(http.StatusBadRequest)
+		return fmt.Errorf("version is required")
+	}
+	err := p.sim.BatchUpdate(startSerial, endSerial, version)
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		return fmt.Errorf("failed to batch devices: %v", err)

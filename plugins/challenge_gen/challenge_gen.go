@@ -62,7 +62,9 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 
 	challenge := common.GenerateChallenge()
 	expiresAt := time.Now().Add(5 * time.Minute)
-
+	// prepare a session alive for 5 minutes
+	// and set it to not verified
+	// the sess id is the serial number + challenge
 	p.sess.AddSess(serialNumber, challenge, expiresAt, false)
 
 	response.Data = map[string]interface{}{
