@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/gin-contrib/pprof"
@@ -32,7 +31,6 @@ import (
 
 // Server application
 type Server struct {
-	mu        sync.Mutex
 	name      string // Module name
 	cfg       string
 	logger    logger.Logger
@@ -63,12 +61,13 @@ func (svr *Server) Setup(ctx context.Context, args []string) error {
 	listDevices := f.Bool("list-devices", false, "List all registered devices")
 	showIncidents := f.Bool("show-incidents", false, "Show security incident logs")
 	showUpdates := f.Bool("show-updates", false, "Show successful update logs")
+	endpoint := f.String("endpoint", "127.0.0.1:9000", "Server address")
 
 	err := f.Parse(args)
 	if err != nil {
 		return err
 	}
-	var exe = NewExecuter()
+	var exe = NewExecuter(*endpoint)
 	switch {
 	case *port > 0 && *allowance > 0:
 		svr.port = *port
@@ -76,7 +75,7 @@ func (svr *Server) Setup(ctx context.Context, args []string) error {
 		fmt.Printf("Server started on port %d, allowance: %d", *port, *allowance)
 	case *increaseAllowance > 0:
 		fmt.Println("Increasing allowance by:", *increaseAllowance)
-		exe.IncreaseAllowance("", *increaseAllowance)
+		return exe.IncreaseAllowance("", *increaseAllowance)
 	case *listDevices:
 		list, err := exe.GetDeviceList()
 		if err != nil {

@@ -62,6 +62,10 @@
             "Description": "Simulate a replay attack with a specific serial number",
             "Plugins": [
                 {
+                    "Name": "HttpData_Parse",
+                    "Index": 0
+                },
+                {
                     "Name": "Replay_Simulate",
                     "Index": 1
                 }

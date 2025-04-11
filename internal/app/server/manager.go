@@ -119,7 +119,7 @@ func (s *SessionManagerImpl) VerifyAuthHeader(authHeader string) (string, error)
 
 // DeviceManager interface defines methods for managing device registration and verification.
 type DeviceManager interface {
-	IsDeviceRegistered(serialNumber string) bool
+	IsDeviceRegistered(serialNumber string) error
 	RegisterDevice(serialNumber, publicKey string, isVerified bool)
 	GetDevicePublicKey(serialNumber string) string
 	GetDeviceList() ([]map[string]interface{}, error)
@@ -143,13 +143,17 @@ func NewDeviceManager(allowance int) *DeviceManagerImpl {
 	}
 }
 
-func (d *DeviceManagerImpl) IsDeviceRegistered(serialNumber string) bool {
+func (d *DeviceManagerImpl) IsDeviceRegistered(serialNumber string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if _, ok := d.DevList[serialNumber]; ok {
-		return true
+	if m, ok := d.DevList[serialNumber]; ok {
+		authorize := cvt.ToBoolean(m["is_verified"])
+		if !authorize {
+			return fmt.Errorf("device is authorized")
+		}
+		return nil
 	}
-	return false
+	return fmt.Errorf("device not registered")
 }
 
 func (d *DeviceManagerImpl) RegisterDevice(serialNumber, publicKey, state string, isVerified bool) error {
@@ -192,10 +196,32 @@ func (d *DeviceManagerImpl) GetDeviceList() ([]map[string]interface{}, error) {
 }
 
 func (d *DeviceManagerImpl) BlockDevice(serialNumber string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if m, ok := d.DevList[serialNumber]; ok {
+		m["is_verified"] = false // marked as unauthorized
+	} else {
+		d.DevList[serialNumber] = make(map[string]interface{})
+		d.DevList[serialNumber]["serial_number"] = serialNumber
+		d.DevList[serialNumber]["public_key"] = ""
+		d.DevList[serialNumber]["is_verified"] = false
+		d.DevList[serialNumber]["state"] = ""
+	}
 	return nil
 }
 
 func (d *DeviceManagerImpl) AuthorizeDevice(serialNumber string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if m, ok := d.DevList[serialNumber]; ok {
+		m["is_verified"] = true // marked as unauthorized
+	} else {
+		d.DevList[serialNumber] = make(map[string]interface{})
+		d.DevList[serialNumber]["serial_number"] = serialNumber
+		d.DevList[serialNumber]["public_key"] = ""
+		d.DevList[serialNumber]["is_verified"] = true
+		d.DevList[serialNumber]["state"] = ""
+	}
 	return nil
 }
 

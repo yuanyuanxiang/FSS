@@ -16,6 +16,7 @@ import (
 
 type DeviceSimulator interface {
 	Replay(startSerial int) error
+	BatchReplay(startSerial, endSerial int) error
 }
 
 type factory struct {
@@ -43,13 +44,27 @@ func (f factory) New(cfg *config.PluginConfig, infra interface{}) (vicg.VicgPlug
 	}, nil
 }
 
+/*
+Request:
+
+	{
+		"end_serial": ""
+	}
+*/
 func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) error {
 	serialNumber := request.URL.Path[strings.LastIndex(request.URL.Path, "/")+1:]
 	if serialNumber == "" {
 		response.WriteHeader(http.StatusBadRequest)
 		return fmt.Errorf("serial number is required")
 	}
-	err := p.sim.Replay(cvt.ToInt(serialNumber))
+	var err error
+	startSerial := cvt.ToInt(serialNumber)
+	endSerial := cvt.ToInt(request.Private["end_serial"])
+	if endSerial > startSerial { // batch replay
+		err = p.sim.BatchReplay(startSerial, endSerial)
+	} else { // single replay
+		err = p.sim.Replay(cvt.ToInt(serialNumber))
+	}
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		return fmt.Errorf("failed to replay devices: %v", err)

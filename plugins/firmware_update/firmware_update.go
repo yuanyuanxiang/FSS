@@ -18,7 +18,7 @@ import (
 )
 
 type DeviceManager interface {
-	IsDeviceRegistered(serialNumber string) bool
+	IsDeviceRegistered(serialNumber string) error
 	GetDevicePublicKey(serialNumber string) string
 }
 
@@ -87,10 +87,11 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 		return fmt.Errorf("invalid version: %s", version)
 	}
 	// check if device is already registered
-	if !p.dev.IsDeviceRegistered(serialNumber) {
+	err := p.dev.IsDeviceRegistered(serialNumber)
+	if err != nil {
 		response.WriteHeader(http.StatusConflict)
-		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "device not registered", http.StatusConflict)
-		return fmt.Errorf("device not registered")
+		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "check device status failed", http.StatusConflict, err)
+		return fmt.Errorf("check device status failed")
 	}
 	// get client public key
 	clientPubKey, err := common.Base64ToPublicKey(p.dev.GetDevicePublicKey(serialNumber))
