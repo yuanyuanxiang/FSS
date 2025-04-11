@@ -10,6 +10,7 @@ import (
 	"github.com/luraproject/lura/v2/config"
 	"github.com/luraproject/lura/v2/proxy"
 	"github.com/luraproject/lura/v2/vicg"
+	"github.com/yuanyuanxiang/fss/pkg/audit"
 	cvt "github.com/yuanyuanxiang/fss/pkg/convert"
 )
 
@@ -18,8 +19,7 @@ type SessionManager interface {
 }
 
 type DeviceManager interface {
-	IsDeviceRegistered(serialNumber string) bool
-	RegisterDevice(serialNumber, publicKey string, isVerified bool)
+	RegisterDevice(serialNumber, publicKey, state string, isVerified bool) error
 }
 
 type factory struct {
@@ -33,7 +33,7 @@ type Plugin struct {
 	factory
 	name  string
 	index int
-	infra interface{}
+	log   audit.LogManager
 }
 
 func NewFactory(sess SessionManager, dev DeviceManager, publicKey string) vicg.VicgPluginFactory {
@@ -41,12 +41,21 @@ func NewFactory(sess SessionManager, dev DeviceManager, publicKey string) vicg.V
 }
 
 func (f factory) New(cfg *config.PluginConfig, infra interface{}) (vicg.VicgPlugin, error) {
-	return &Plugin{
+	p := &Plugin{
 		factory: f,
 		index:   cfg.Index,
 		name:    cfg.Name,
-		infra:   infra,
-	}, nil
+		log:     nil,
+	}
+	var m map[string]interface{}
+	if v, ok := infra.(*vicg.Infra); ok && v != nil {
+		m = v.ExtraConfig
+	}
+	p.log, _ = m[audit.LOG_MANAGER].(audit.LogManager)
+	if p.log == nil {
+		return nil, fmt.Errorf("audit log manager is not set")
+	}
+	return p, nil
 }
 
 /*
@@ -70,31 +79,32 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	serialNumber, err := p.sess.VerifyAuthHeader(request.HeaderGet("Authorization"))
 	if serialNumber == "" || err != nil {
 		response.WriteHeader(http.StatusUnauthorized)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "missing or invalid authorization header", http.StatusUnauthorized, err)
 		return fmt.Errorf("missing or invalid authorization header: %v", err)
 	}
 
 	if cvt.ToString(request.Private["serial_number"]) != serialNumber {
 		response.WriteHeader(http.StatusBadRequest)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "serial number mismatch", http.StatusBadRequest)
 		return fmt.Errorf("serial number mismatch")
 	}
 
-	// check if device is already registered
-	if p.dev.IsDeviceRegistered(serialNumber) {
-		response.WriteHeader(http.StatusConflict)
-		return fmt.Errorf("device already registered")
+	// register device: if the allowance is exceeded, it will also return an error
+	if err := p.dev.RegisterDevice(serialNumber, cvt.ToString(request.Private["public_key"]),
+		cvt.ToString(request.Private["state"]), true); err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "failed to register device", http.StatusInternalServerError, err)
+		return fmt.Errorf("failed to register device: %v", err)
 	}
-
-	// register device
-	p.dev.RegisterDevice(serialNumber, cvt.ToString(request.Private["public_key"]), true)
 
 	response.Data = map[string]interface{}{
 		"code":          0,
-		"msg":           "ok",
+		"msg":           "success",
 		"serial_number": serialNumber,
 		"public_key":    p.publicKey,
 	}
 	response.WriteHeader(http.StatusCreated)
-
+	p.log.AddLog(request.RemoteAddr, serialNumber, "success", http.StatusOK)
 	return nil
 }
 

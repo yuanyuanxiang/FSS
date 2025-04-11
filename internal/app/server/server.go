@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/luraproject/lura/v2/router/gin"
 	"github.com/luraproject/lura/v2/vicg"
 	"github.com/yuanyuanxiang/fss/internal/pkg/common"
+	"github.com/yuanyuanxiang/fss/pkg/audit"
 	"github.com/yuanyuanxiang/fss/pkg/logger"
 	"github.com/yuanyuanxiang/fss/plugins/allowance_update"
 	"github.com/yuanyuanxiang/fss/plugins/audit_logs"
@@ -68,27 +68,51 @@ func (svr *Server) Setup(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-
-	if *port > 0 && *allowance > 0 {
+	var exe = NewExecuter()
+	switch {
+	case *port > 0 && *allowance > 0:
 		svr.port = *port
 		svr.allowance = *allowance
 		fmt.Printf("Server started on port %d, allowance: %d", *port, *allowance)
-	} else if *increaseAllowance > 0 {
+	case *increaseAllowance > 0:
 		fmt.Println("Increasing allowance by:", *increaseAllowance)
-	} else if *block != "" {
-		fmt.Println("Blocking device:", *block)
-	} else if *authorize != "" {
-		fmt.Println("Authorizing device:", *authorize)
-	} else if *listDevices {
+		exe.IncreaseAllowance("", *increaseAllowance)
+	case *listDevices:
+		list, err := exe.GetDeviceList()
+		if err != nil {
+			return err
+		}
 		fmt.Println("Registered devices:")
-	} else if *showIncidents {
+		fmt.Println(list)
+	case *showIncidents:
+		list, err := exe.GetAuditLogs(string(audit.TYPE_INCIDENT))
+		if err != nil {
+			return err
+		}
 		fmt.Println("Security incidents:")
-	} else if *showUpdates {
+		fmt.Println(list)
+	case *showUpdates:
+		list, err := exe.GetAuditLogs(string(audit.TYPE_UPDATE))
+		if err != nil {
+			return err
+		}
 		fmt.Println("Update logs:")
-	}
-
-	if len(flag.Args()) > 0 {
-		fmt.Println("Unknown arguments:", strings.Join(flag.Args(), " "))
+		fmt.Println(list)
+	case *block != "":
+		fmt.Println("Blocking device:", *block)
+		return exe.BlockDevice(*block)
+	case *authorize != "":
+		fmt.Println("Authorizing device:", *authorize)
+		return exe.AuthorizeDevice(*block)
+	default:
+		fmt.Println("Usage: server --port=<port> - Start the server on specified port")
+		fmt.Println("       server --allowance=<number> - Set initial device registration allowance")
+		fmt.Println("       server --increase-allowance=<number> - Increase allowance counter by specified amount")
+		fmt.Println("       server --list-devices - Display all registered devices")
+		fmt.Println("       server --show-incidents - Display security incident logs")
+		fmt.Println("       server --show-updates - Display successful update logs")
+		fmt.Println("       server --block=<serialNumber> - Block a specific device")
+		fmt.Println("       server --authorize=<serialNumber> - Authorize a specific device")
 		os.Exit(1)
 	}
 
@@ -120,7 +144,7 @@ func (svr *Server) Run(ctx context.Context) error {
 	if svr.port <= 0 {
 		return nil
 	}
-
+	logManager := audit.NewManager()
 	var log, _ = logging.NewLogger("INFO", os.Stdout, "")
 	var srvConf = config.ServiceConfig{
 		Version:         1,
@@ -130,7 +154,7 @@ func (svr *Server) Run(ctx context.Context) error {
 		CacheTTL:        time.Duration(10) * time.Second,
 		Port:            svr.port,
 		SequentialStart: true,
-		ExtraConfig:     map[string]interface{}{"Hello": "world"},
+		ExtraConfig:     map[string]interface{}{audit.LOG_MANAGER: logManager}, // pass log manager to all plugins
 	}
 	var err error
 	srvConf.Endpoints, err = readPluginFile(svr.cfg)
@@ -139,18 +163,18 @@ func (svr *Server) Run(ctx context.Context) error {
 	}
 	srvConf.NormalizeEndpoints()
 	sessManeger := NewSessionManager()
-	devManager := NewDeviceManager()
+	devManager := NewDeviceManager(svr.allowance)
 	// Global plugin factory
 	factory := map[string]vicg.VicgPluginFactory{
 		"HttpData_Parse":   httpdata_parse.NewFactory(),
 		"Challenge_Gen":    challenge_gen.NewFactory(sessManeger),
-		"Challenge_Verify": challenge_verify.NewFactory(sessManeger, svr, common.SymmetricKey),
+		"Challenge_Verify": challenge_verify.NewFactory(sessManeger, devManager, common.SymmetricKey),
 		"Device_Register":  device_register.NewFactory(sessManeger, devManager, common.PublicKeyToBase64(svr.key.PublicKey())),
-		"Allowance_Update": allowance_update.NewFactory(svr),
+		"Allowance_Update": allowance_update.NewFactory(devManager),
 		"Firmware_Update":  firmware_update.NewFactory(devManager, svr.key),
 		"Device_List":      device_list.NewFactory(devManager),
 		"Device_Auth":      device_auth.NewFactory(devManager),
-		"Audit_Logs":       audit_logs.NewFactory(svr),
+		"Audit_Logs":       audit_logs.NewFactory(),
 	}
 	f := func(cfg *gin.Config) {
 		pprof.Register(cfg.Engine) // register pprof
@@ -159,22 +183,6 @@ func (svr *Server) Run(ctx context.Context) error {
 	router.Run(srvConf)
 
 	return nil
-}
-
-func (svr *Server) GetAuditLogs(typ string) ([]map[string]interface{}, error) {
-	return nil, nil
-}
-
-func (svr *Server) GetAllowance(key string) int {
-	svr.mu.Lock()
-	defer svr.mu.Unlock()
-	return svr.allowance
-}
-
-func (svr *Server) IncreaseAllowance(key string, inc int) {
-	svr.mu.Lock()
-	defer svr.mu.Unlock()
-	svr.allowance += inc
 }
 
 func (svr *Server) Stop(context.Context) {

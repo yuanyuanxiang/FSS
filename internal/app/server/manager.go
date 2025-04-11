@@ -125,16 +125,21 @@ type DeviceManager interface {
 	GetDeviceList() ([]map[string]interface{}, error)
 	BlockDevice(serialNumber string) error
 	AuthorizeDevice(serialNumber string) error
+
+	GetAllowance(key string) int
+	IncreaseAllowance(key string, inc int)
 }
 
 type DeviceManagerImpl struct {
-	mu      sync.Mutex
-	DevList map[string]map[string]interface{}
+	mu        sync.Mutex
+	allowance int
+	DevList   map[string]map[string]interface{}
 }
 
-func NewDeviceManager() *DeviceManagerImpl {
+func NewDeviceManager(allowance int) *DeviceManagerImpl {
 	return &DeviceManagerImpl{
-		DevList: make(map[string]map[string]interface{}),
+		allowance: allowance,
+		DevList:   make(map[string]map[string]interface{}),
 	}
 }
 
@@ -147,15 +152,24 @@ func (d *DeviceManagerImpl) IsDeviceRegistered(serialNumber string) bool {
 	return false
 }
 
-func (d *DeviceManagerImpl) RegisterDevice(serialNumber, publicKey string, isVerified bool) {
+func (d *DeviceManagerImpl) RegisterDevice(serialNumber, publicKey, state string, isVerified bool) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if _, ok := d.DevList[serialNumber]; !ok {
-		d.DevList[serialNumber] = make(map[string]interface{})
+	if d.allowance <= 0 {
+		return fmt.Errorf("allowance exceeded")
 	}
+	if _, ok := d.DevList[serialNumber]; ok {
+		fmt.Printf("Device %s is already registered\n", serialNumber)
+	} else {
+		d.allowance--
+	}
+	d.DevList[serialNumber] = make(map[string]interface{})
+	d.DevList[serialNumber]["serial_number"] = serialNumber
 	d.DevList[serialNumber]["public_key"] = publicKey
 	d.DevList[serialNumber]["is_verified"] = isVerified
+	d.DevList[serialNumber]["state"] = state
 	fmt.Printf("Device %s registered with public key: %s\n", serialNumber, publicKey)
+	return nil
 }
 
 func (d *DeviceManagerImpl) GetDevicePublicKey(serialNumber string) string {
@@ -183,4 +197,16 @@ func (d *DeviceManagerImpl) BlockDevice(serialNumber string) error {
 
 func (d *DeviceManagerImpl) AuthorizeDevice(serialNumber string) error {
 	return nil
+}
+
+func (d *DeviceManagerImpl) GetAllowance(key string) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.allowance
+}
+
+func (d *DeviceManagerImpl) IncreaseAllowance(key string, inc int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.allowance += inc
 }

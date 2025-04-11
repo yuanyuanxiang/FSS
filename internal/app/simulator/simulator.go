@@ -19,6 +19,7 @@ import (
 	"github.com/luraproject/lura/v2/router/gin"
 	"github.com/luraproject/lura/v2/vicg"
 	"github.com/yuanyuanxiang/fss/internal/pkg/common"
+	"github.com/yuanyuanxiang/fss/pkg/audit"
 	"github.com/yuanyuanxiang/fss/pkg/logger"
 	"github.com/yuanyuanxiang/fss/plugins/batch_update"
 	"github.com/yuanyuanxiang/fss/plugins/device_list"
@@ -270,6 +271,7 @@ func (sim *Simulator) Run(ctx context.Context) error {
 	if err != nil {
 		sim.log.Printf("Failed to restore devices: %v\n", err)
 	}
+	logManager := audit.NewManager()
 	var log, _ = logging.NewLogger("INFO", os.Stdout, "")
 	var srvConf = config.ServiceConfig{
 		Version:         1,
@@ -279,7 +281,7 @@ func (sim *Simulator) Run(ctx context.Context) error {
 		CacheTTL:        time.Duration(10) * time.Second,
 		Port:            sim.port,
 		SequentialStart: true,
-		ExtraConfig:     map[string]interface{}{"Hello": "world"},
+		ExtraConfig:     map[string]interface{}{audit.LOG_MANAGER: logManager},
 	}
 	srvConf.Endpoints, err = readPluginFile(sim.cfg)
 	if err != nil {

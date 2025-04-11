@@ -11,6 +11,7 @@ import (
 	"github.com/luraproject/lura/v2/config"
 	"github.com/luraproject/lura/v2/proxy"
 	"github.com/luraproject/lura/v2/vicg"
+	"github.com/yuanyuanxiang/fss/pkg/audit"
 )
 
 type DeviceAuth interface {
@@ -27,7 +28,7 @@ type Plugin struct {
 	factory
 	name  string
 	index int
-	infra interface{}
+	log   audit.LogManager
 }
 
 func NewFactory(auth DeviceAuth) vicg.VicgPluginFactory {
@@ -35,12 +36,21 @@ func NewFactory(auth DeviceAuth) vicg.VicgPluginFactory {
 }
 
 func (f factory) New(cfg *config.PluginConfig, infra interface{}) (vicg.VicgPlugin, error) {
-	return &Plugin{
+	p := &Plugin{
 		factory: f,
 		index:   cfg.Index,
 		name:    cfg.Name,
-		infra:   infra,
-	}, nil
+		log:     nil,
+	}
+	var m map[string]interface{}
+	if v, ok := infra.(*vicg.Infra); ok && v != nil {
+		m = v.ExtraConfig
+	}
+	p.log, _ = m[audit.LOG_MANAGER].(audit.LogManager)
+	if p.log == nil {
+		return nil, fmt.Errorf("audit log manager is not set")
+	}
+	return p, nil
 }
 
 func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) error {
@@ -60,13 +70,17 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	}
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "failed to "+operation, http.StatusInternalServerError, err)
 		response.Data = map[string]interface{}{"code": 500, "msg": err.Error()}
 		return fmt.Errorf("failed to %s device: %v", operation, err)
 	}
 	response.Data = map[string]interface{}{
-		"code": 0,
-		"msg":  "success",
+		"code":          0,
+		"msg":           "success",
+		"serial_number": serialNumber,
+		"operation":     operation,
 	}
+	p.log.AddLog(request.RemoteAddr, serialNumber, "success", http.StatusOK)
 
 	return nil
 }

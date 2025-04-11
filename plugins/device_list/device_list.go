@@ -10,6 +10,7 @@ import (
 	"github.com/luraproject/lura/v2/config"
 	"github.com/luraproject/lura/v2/proxy"
 	"github.com/luraproject/lura/v2/vicg"
+	"github.com/yuanyuanxiang/fss/pkg/audit"
 )
 
 type DeviceQuery interface {
@@ -25,7 +26,7 @@ type Plugin struct {
 	factory
 	name  string
 	index int
-	infra interface{}
+	log   audit.LogManager
 }
 
 func NewFactory(dev DeviceQuery) vicg.VicgPluginFactory {
@@ -33,12 +34,21 @@ func NewFactory(dev DeviceQuery) vicg.VicgPluginFactory {
 }
 
 func (f factory) New(cfg *config.PluginConfig, infra interface{}) (vicg.VicgPlugin, error) {
-	return &Plugin{
+	p := &Plugin{
 		factory: f,
 		index:   cfg.Index,
 		name:    cfg.Name,
-		infra:   infra,
-	}, nil
+		log:     nil,
+	}
+	var m map[string]interface{}
+	if v, ok := infra.(*vicg.Infra); ok && v != nil {
+		m = v.ExtraConfig
+	}
+	p.log, _ = m[audit.LOG_MANAGER].(audit.LogManager)
+	if p.log == nil {
+		return nil, fmt.Errorf("audit log manager is not set")
+	}
+	return p, nil
 }
 
 func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) error {
@@ -50,6 +60,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	response.Data["devices"] = arr
 	response.Data["code"] = 0
 	response.Data["msg"] = "success"
+	response.Data["total"] = len(arr)
 
 	return nil
 }

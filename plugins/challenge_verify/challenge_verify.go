@@ -6,12 +6,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sync/atomic"
 
 	"github.com/luraproject/lura/v2/config"
 	"github.com/luraproject/lura/v2/proxy"
 	"github.com/luraproject/lura/v2/vicg"
 	"github.com/yuanyuanxiang/fss/internal/pkg/common"
+	"github.com/yuanyuanxiang/fss/pkg/audit"
 	cvt "github.com/yuanyuanxiang/fss/pkg/convert"
 )
 
@@ -21,15 +21,14 @@ type SessionManager interface {
 	GenerateAuthHeader(serialNumber string) string
 }
 
-type AllowanceManeger interface {
+type DeviceManager interface {
 	GetAllowance(key string) int
 }
 
 type factory struct {
 	sess   SessionManager
-	allow  AllowanceManeger
+	allow  DeviceManager
 	secret string
-	count  int32
 }
 
 // Plugin defines
@@ -37,10 +36,10 @@ type Plugin struct {
 	factory
 	name  string
 	index int
-	infra interface{}
+	log   audit.LogManager
 }
 
-func NewFactory(sess SessionManager, allow AllowanceManeger, secret string) vicg.VicgPluginFactory {
+func NewFactory(sess SessionManager, allow DeviceManager, secret string) vicg.VicgPluginFactory {
 	return factory{
 		sess:   sess,
 		allow:  allow,
@@ -49,12 +48,21 @@ func NewFactory(sess SessionManager, allow AllowanceManeger, secret string) vicg
 }
 
 func (f factory) New(cfg *config.PluginConfig, infra interface{}) (vicg.VicgPlugin, error) {
-	return &Plugin{
+	p := &Plugin{
 		factory: f,
 		index:   cfg.Index,
 		name:    cfg.Name,
-		infra:   infra,
-	}, nil
+		log:     nil,
+	}
+	var m map[string]interface{}
+	if v, ok := infra.(*vicg.Infra); ok && v != nil {
+		m = v.ExtraConfig
+	}
+	p.log, _ = m[audit.LOG_MANAGER].(audit.LogManager)
+	if p.log == nil {
+		return nil, fmt.Errorf("audit log manager is not set")
+	}
+	return p, nil
 }
 
 /*
@@ -76,12 +84,12 @@ Response:
 */
 func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) error {
 	allowance := p.allow.GetAllowance(p.secret)
-	num := atomic.LoadInt32(&p.count)
-	if num >= int32(allowance) {
-		response.WriteHeader(http.StatusTooManyRequests)
-		return fmt.Errorf("too many requests")
-	}
 	serialNumber := cvt.ToString(request.Private["serial_number"])
+	if allowance <= 0 {
+		response.WriteHeader(http.StatusForbidden)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "allowance exceeded", http.StatusForbidden)
+		return fmt.Errorf("allowance exceeded")
+	}
 	signature := cvt.ToString(request.Private["signature"])
 	challenge := cvt.ToString(request.Private["challenge"])
 
@@ -90,26 +98,31 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	valid := common.VerifySignature(challenge, p.secret, signature)
 	if !valid {
 		response.WriteHeader(http.StatusUnauthorized)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "invalid signature", http.StatusUnauthorized)
 		return fmt.Errorf("invalid signature")
 	}
 
 	if !p.sess.IsValidSess(serialNumber, challenge) {
 		response.WriteHeader(http.StatusBadRequest)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "invalid or expired session", http.StatusBadRequest)
 		return fmt.Errorf("invalid or expired session")
 	}
 
 	// mark the session as verified. only can verify once.
 	if !p.sess.MarkSessVerified(serialNumber, challenge) {
 		response.WriteHeader(http.StatusBadRequest)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "invalid or verified session", http.StatusBadRequest)
 		return fmt.Errorf("invalid or verified session")
 	}
 
 	response.Data = map[string]interface{}{
+		"code":          0,
+		"msg":           "success",
 		"serial_number": serialNumber,
 		"status":        "verified",
 		"token":         p.sess.GenerateAuthHeader(serialNumber),
 	}
-	atomic.AddInt32(&p.count, 1)
+	p.log.AddLog(request.RemoteAddr, serialNumber, "success", http.StatusOK)
 	return nil
 }
 

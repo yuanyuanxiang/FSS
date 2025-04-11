@@ -102,7 +102,7 @@ func (d *Device) Register() error {
 	auth := cvt.ToString(token["token"])
 	// register
 	pubKeyBase64 := common.PublicKeyToBase64(d.PublicKey)
-	data, _ = json.Marshal(map[string]interface{}{"serial_number": d.SerialNumber, "public_key": pubKeyBase64})
+	data, _ = json.Marshal(map[string]interface{}{"serial_number": d.SerialNumber, "public_key": pubKeyBase64, "state": d.State})
 	req, err = http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/register", d.MasterAddress), bytes.NewBuffer(data))
 	if err != nil {
 		return err

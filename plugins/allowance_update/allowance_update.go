@@ -13,6 +13,7 @@ import (
 )
 
 type AllowanceManeger interface {
+	GetAllowance(key string) int
 	IncreaseAllowance(key string, inc int)
 }
 
@@ -47,6 +48,14 @@ Request:
 	{
 		"increase_allowance": 10
 	}
+
+Response:
+
+	{
+		"code": 0,
+		"msg": "ok",
+		"allowance": 10
+	}
 */
 func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) error {
 	allowanceInc := cvt.ToInt(request.Private["increase_allowance"])
@@ -55,7 +64,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 		return fmt.Errorf("invalid increase_allowance: %d", allowanceInc)
 	}
 	p.allow.IncreaseAllowance("", allowanceInc)
-	response.Data = map[string]interface{}{"code": 0, "msg": "ok"}
+	response.Data = map[string]interface{}{"code": 0, "msg": "ok", "allowance": p.allow.GetAllowance("")}
 	return nil
 }
 

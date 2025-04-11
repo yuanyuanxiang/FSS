@@ -13,6 +13,7 @@ import (
 	"github.com/luraproject/lura/v2/proxy"
 	"github.com/luraproject/lura/v2/vicg"
 	"github.com/yuanyuanxiang/fss/internal/pkg/common"
+	"github.com/yuanyuanxiang/fss/pkg/audit"
 	cvt "github.com/yuanyuanxiang/fss/pkg/convert"
 )
 
@@ -31,7 +32,7 @@ type Plugin struct {
 	factory
 	name  string
 	index int
-	infra interface{}
+	log   audit.LogManager
 }
 
 func NewFactory(dev DeviceManager, serverPriv *ecdh.PrivateKey) vicg.VicgPluginFactory {
@@ -39,12 +40,21 @@ func NewFactory(dev DeviceManager, serverPriv *ecdh.PrivateKey) vicg.VicgPluginF
 }
 
 func (f factory) New(cfg *config.PluginConfig, infra interface{}) (vicg.VicgPlugin, error) {
-	return &Plugin{
+	p := &Plugin{
 		factory: f,
 		index:   cfg.Index,
 		name:    cfg.Name,
-		infra:   infra,
-	}, nil
+		log:     nil,
+	}
+	var m map[string]interface{}
+	if v, ok := infra.(*vicg.Infra); ok && v != nil {
+		m = v.ExtraConfig
+	}
+	p.log, _ = m[audit.LOG_MANAGER].(audit.LogManager)
+	if p.log == nil {
+		return nil, fmt.Errorf("audit log manager is not set")
+	}
+	return p, nil
 }
 
 /*
@@ -69,21 +79,24 @@ Response:
 	}
 */
 func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) error {
+	serialNumber := cvt.ToString(request.Private["serial_number"])
 	version := request.Path[strings.LastIndex(request.Path, "/")+1:]
 	if version == "" {
 		response.WriteHeader(http.StatusBadRequest)
+		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "request invalid version", http.StatusBadRequest)
 		return fmt.Errorf("invalid version: %s", version)
 	}
-	serialNumber := cvt.ToString(request.Private["serial_number"])
 	// check if device is already registered
 	if !p.dev.IsDeviceRegistered(serialNumber) {
 		response.WriteHeader(http.StatusConflict)
-		return fmt.Errorf("device already registered")
+		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "device not registered", http.StatusConflict)
+		return fmt.Errorf("device not registered")
 	}
 	// get client public key
 	clientPubKey, err := common.Base64ToPublicKey(p.dev.GetDevicePublicKey(serialNumber))
 	if err != nil {
 		response.WriteHeader(http.StatusBadRequest)
+		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "invalid public key", http.StatusBadRequest, err)
 		return fmt.Errorf("invalid public key: %v", err)
 
 	}
@@ -91,10 +104,11 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	sharedSecret, _ := p.serverPriv.ECDH(clientPubKey)
 	encKey, macKey := common.DeriveKeys(sharedSecret)
 	// encrypt the firmware data
-	var firmwareData = "1.0.1"
+	var firmwareData = version
 	encryptedData, err := common.EncryptData([]byte(firmwareData), encKey)
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
+		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "failed to encrypt response", http.StatusInternalServerError, err)
 		return fmt.Errorf("failed to encrypt response: %v", err)
 	}
 
@@ -102,12 +116,15 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	mac := common.SignSignature(base64Data, string(macKey))
 
 	response.Data = map[string]interface{}{
+		"code":          0,
+		"msg":           "success",
 		"serial_number": serialNumber,
 		"data":          base64Data, // base64 encrypted firmware data
 		"version":       version,
 		"timestamp":     common.GetCurrentTimestamp(),
 		"signature":     mac,
 	}
+	p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "success", http.StatusOK)
 
 	return nil
 }

@@ -6,20 +6,15 @@ package audit_logs
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/luraproject/lura/v2/config"
 	"github.com/luraproject/lura/v2/proxy"
 	"github.com/luraproject/lura/v2/vicg"
+	"github.com/yuanyuanxiang/fss/pkg/audit"
 )
 
-type AuditLog interface {
-	GetAuditLogs(typ string) ([]map[string]interface{}, error)
-}
-
 type factory struct {
-	audit AuditLog
 }
 
 // Plugin defines
@@ -27,34 +22,43 @@ type Plugin struct {
 	factory
 	name  string
 	index int
-	infra interface{}
+	log   audit.LogManager
 }
 
-func NewFactory(audit AuditLog) vicg.VicgPluginFactory {
-	return factory{audit: audit}
+func NewFactory() vicg.VicgPluginFactory {
+	return factory{}
 }
 
 func (f factory) New(cfg *config.PluginConfig, infra interface{}) (vicg.VicgPlugin, error) {
-	return &Plugin{
+	p := &Plugin{
 		factory: f,
 		index:   cfg.Index,
 		name:    cfg.Name,
-		infra:   infra,
-	}, nil
+		log:     nil,
+	}
+	var m map[string]interface{}
+	if v, ok := infra.(*vicg.Infra); ok && v != nil {
+		m = v.ExtraConfig
+	}
+	p.log, _ = m[audit.LOG_MANAGER].(audit.LogManager)
+	if p.log == nil {
+		return nil, fmt.Errorf("audit log manager is not set")
+	}
+	return p, nil
 }
 
 func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) error {
 	typ := request.Path[strings.LastIndex(request.Path, "/")+1:]
-	arr, err := p.audit.GetAuditLogs(typ)
+	arr, err := p.log.GetAuditLogs(typ)
+	response.Data["msg"] = "success"
+	response.Data["code"] = 0
 	if err != nil {
-		response.WriteHeader(http.StatusInternalServerError)
-		return fmt.Errorf("failed to get audit logs: %v", err)
+		response.Data["code"] = -1
+		response.Data["msg"] = fmt.Sprintf("failed to get audit logs: %v", err)
 	}
 	response.Data["audit_logs"] = arr
 	response.Data["type"] = typ
 	response.Data["count"] = len(arr)
-	response.Data["msg"] = "success"
-	response.Data["code"] = 0
 
 	return nil
 }
