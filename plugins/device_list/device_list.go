@@ -55,7 +55,11 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	arr, err := p.dev.GetDeviceList()
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
-		return fmt.Errorf("failed to list devices: %v", err)
+		response.Data = map[string]interface{}{
+			"code": http.StatusInternalServerError,
+			"msg":  fmt.Sprintf("failed to list devices: %v", err),
+		}
+		return nil
 	}
 	response.Data["devices"] = arr
 	response.Data["code"] = 0

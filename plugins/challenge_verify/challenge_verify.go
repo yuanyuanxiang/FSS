@@ -88,7 +88,11 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	if allowance <= 0 {
 		response.WriteHeader(http.StatusForbidden)
 		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "allowance exceeded", http.StatusForbidden)
-		return fmt.Errorf("allowance exceeded")
+		response.Data = map[string]interface{}{
+			"code": http.StatusForbidden,
+			"msg":  "allowance exceeded",
+		}
+		return nil
 	}
 	signature := cvt.ToString(request.Private["signature"])
 	challenge := cvt.ToString(request.Private["challenge"])
@@ -99,20 +103,32 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	if !valid {
 		response.WriteHeader(http.StatusUnauthorized)
 		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "invalid signature", http.StatusUnauthorized)
-		return fmt.Errorf("invalid signature")
+		response.Data = map[string]interface{}{
+			"code": http.StatusUnauthorized,
+			"msg":  "invalid signature",
+		}
+		return nil
 	}
 
 	if !p.sess.IsValidSess(serialNumber, challenge) {
 		response.WriteHeader(http.StatusBadRequest)
 		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "invalid or expired session", http.StatusBadRequest)
-		return fmt.Errorf("invalid or expired session")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "invalid or expired session",
+		}
+		return nil
 	}
 
 	// mark the session as verified. only can verify once.
 	if !p.sess.MarkSessVerified(serialNumber, challenge) {
 		response.WriteHeader(http.StatusBadRequest)
 		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "invalid or verified session", http.StatusBadRequest)
-		return fmt.Errorf("invalid or verified session")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "invalid or verified session",
+		}
+		return nil
 	}
 
 	response.Data = map[string]interface{}{

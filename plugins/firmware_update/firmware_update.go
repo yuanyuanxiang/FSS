@@ -84,21 +84,33 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	if version == "" {
 		response.WriteHeader(http.StatusBadRequest)
 		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "request invalid version", http.StatusBadRequest)
-		return fmt.Errorf("invalid version: %s", version)
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  fmt.Sprintf("invalid version: %s", version),
+		}
+		return nil
 	}
 	// check if device is already registered
 	err := p.dev.IsDeviceRegistered(serialNumber)
 	if err != nil {
 		response.WriteHeader(http.StatusConflict)
 		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "check device status failed", http.StatusConflict, err)
-		return fmt.Errorf("check device status failed")
+		response.Data = map[string]interface{}{
+			"code": http.StatusConflict,
+			"msg":  "check device status failed",
+		}
+		return nil
 	}
 	// get client public key
 	clientPubKey, err := common.Base64ToPublicKey(p.dev.GetDevicePublicKey(serialNumber))
 	if err != nil {
 		response.WriteHeader(http.StatusBadRequest)
 		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "invalid public key", http.StatusBadRequest, err)
-		return fmt.Errorf("invalid public key: %v", err)
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  fmt.Sprintf("invalid public key: %v", err),
+		}
+		return nil
 
 	}
 	// derive shared secret
@@ -110,7 +122,11 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "failed to encrypt response", http.StatusInternalServerError, err)
-		return fmt.Errorf("failed to encrypt response: %v", err)
+		response.Data = map[string]interface{}{
+			"code": http.StatusInternalServerError,
+			"msg":  fmt.Sprintf("failed to encrypt response: %v", err),
+		}
+		return nil
 	}
 
 	base64Data := base64.StdEncoding.EncodeToString(encryptedData)

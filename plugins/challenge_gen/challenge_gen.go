@@ -4,7 +4,6 @@ package challenge_gen
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -57,7 +56,11 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	serialNumber := request.URL.Path[strings.LastIndex(request.URL.Path, "/")+1:]
 	if serialNumber == "" {
 		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("serial number is required")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "serial number is required",
+		}
+		return nil
 	}
 
 	challenge := common.GenerateChallenge()
@@ -74,8 +77,6 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 		"code":          0,
 		"msg":           "ok",
 	}
-
-	response.Header().Set("Content-Type", "application/json")
 
 	return nil
 }

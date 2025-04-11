@@ -48,17 +48,29 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	serialNumber := arr[len(arr)-2]
 	if serialNumber == "" {
 		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("serial number is required")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "serial number is required",
+		}
+		return nil
 	}
 	version := cvt.ToString(request.Private["version"])
 	if version == "" {
 		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("version is required")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "version is required",
+		}
+		return nil
 	}
 	err := p.sim.UpdateDevice(cvt.ToInt(serialNumber), version)
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
-		return fmt.Errorf("failed to update devices: %v", err)
+		response.Data = map[string]interface{}{
+			"code": http.StatusInternalServerError,
+			"msg":  fmt.Sprintf("failed to update devices: %v", err),
+		}
+		return nil
 	}
 	response.Data = map[string]interface{}{
 		"code": 0,

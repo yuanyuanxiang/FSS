@@ -56,21 +56,37 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	endSerial := cvt.ToInt(request.Private["end_serial"])
 	if startSerial < 0 || endSerial < 0 {
 		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("start_serial and end_serial must be greater than 0")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "start_serial and end_serial must be greater than 0",
+		}
+		return nil
 	}
 	if endSerial < startSerial {
 		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("end_serial must be greater than start_serial")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "end_serial must be greater than start_serial",
+		}
+		return nil
 	}
 	version := cvt.ToString(request.Private["version"])
 	if version == "" {
 		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("version is required")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "version is required",
+		}
+		return nil
 	}
 	err := p.sim.BatchUpdate(startSerial, endSerial, version)
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
-		return fmt.Errorf("failed to batch devices: %v", err)
+		response.Data = map[string]interface{}{
+			"code": http.StatusInternalServerError,
+			"msg":  fmt.Sprintf("failed to batch update: %v", err),
+		}
+		return nil
 	}
 	response.Data = map[string]interface{}{
 		"code": 0,

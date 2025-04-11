@@ -2,6 +2,7 @@ package simulator
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
@@ -71,6 +72,25 @@ func (d *Device) GetChallenge() (string, error) {
 	}
 	challenge := cvt.ToString(m["challenge"])
 	return challenge, nil
+}
+
+func (d *Device) RegisterProc(ctx context.Context, duration time.Duration) {
+	ticker := time.NewTicker(duration)
+	registered := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if registered {
+				continue
+			}
+			if err := d.Register(); err != nil {
+				continue
+			}
+			registered = true
+		}
+	}
 }
 
 func (d *Device) Register() error {

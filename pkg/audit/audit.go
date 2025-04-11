@@ -1,7 +1,9 @@
 package audit
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -28,12 +30,17 @@ type LogManager interface {
 type LogManagerImpl struct {
 	mu   sync.Mutex
 	Logs map[LogType][]map[string]interface{}
+	path string
 }
 
-func NewManager() *LogManagerImpl {
-	return &LogManagerImpl{
+func NewManager(path string) *LogManagerImpl {
+	v := &LogManagerImpl{
 		Logs: make(map[LogType][]map[string]interface{}),
+		path: path,
 	}
+	data, _ := os.ReadFile(path)
+	_ = json.Unmarshal(data, &v.Logs)
+	return v
 }
 
 func (l *LogManagerImpl) GetAuditLogs(typ string) ([]map[string]interface{}, error) {
@@ -62,6 +69,9 @@ func (l *LogManagerImpl) addLog(typ LogType, remoteAddr, serialNumber, desc stri
 		l.Logs[typ] = make([]map[string]interface{}, 0)
 	}
 	l.Logs[typ] = append(l.Logs[typ], log)
+	// use database instead
+	data, _ := json.MarshalIndent(l.Logs, "", "  ")
+	_ = os.WriteFile(l.path, data, 0644)
 }
 
 func (l *LogManagerImpl) AddLog(remoteAddr, serialNumber, desc string, code int, detail ...interface{}) {

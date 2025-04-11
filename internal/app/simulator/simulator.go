@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-contrib/pprof"
@@ -36,6 +37,8 @@ const (
 
 // Simulator application
 type Simulator struct {
+	ctx     context.Context
+	mu      sync.Mutex
 	name    string // Module name
 	cfg     string // Configuration file path
 	log     logger.Logger
@@ -56,26 +59,38 @@ func (sim *Simulator) GetName() string {
 // startSerial is the starting serial number for device generation
 // mimimum value is 0
 // master is the master address for device registration
-// Note: if the device already exists, it will be overwritten
+// Note: if the device already exists, it will do nothing
 // After the device is generated, it will be registered to the master
 // The device will be registered in a separate goroutine
 func (sim *Simulator) GenerateDevices(master string, count int, startSerial int) error {
+	sim.mu.Lock()
+	defer sim.mu.Unlock()
 	for i := 0; i < count; i++ {
 		id := i + startSerial
+		if sim.IsDeviceExit(id) {
+			sim.log.Infof("Device '%v' is already exist\n", id)
+			continue
+		}
 		device, err := NewDevice(master, id, InitialVersion, common.SymmetricKey)
 		if err != nil {
 			sim.log.Printf("Failed to generate device %v: %v\n", id, err)
 			continue
 		}
 		sim.devices = append(sim.devices, device)
-		go func() {
-			if err := device.Register(); err != nil {
-				sim.log.Printf("Failed to register device %s: %v\n", device.SerialNumber, err)
-			}
-		}()
+		go device.RegisterProc(sim.ctx, 5*time.Second)
 		sim.log.Printf("Generated device: SerialNumber=%v\n", id)
 	}
 	return nil
+}
+
+func (sim *Simulator) IsDeviceExit(serialNumber int) bool {
+	var id = fmt.Sprintf("%010d", serialNumber)
+	for _, d := range sim.devices {
+		if d.SerialNumber == id {
+			return true
+		}
+	}
+	return false
 }
 
 // Request update for a specific device
@@ -83,6 +98,8 @@ func (sim *Simulator) GenerateDevices(master string, count int, startSerial int)
 // If the device is not found, an error will be returned
 func (sim *Simulator) UpdateDevice(serialNumber int, version string) error {
 	serialNumberStr := fmt.Sprintf("%010d", serialNumber)
+	sim.mu.Lock()
+	defer sim.mu.Unlock()
 	for _, device := range sim.devices {
 		if device.SerialNumber == serialNumberStr {
 			return device.Update(version)
@@ -103,10 +120,17 @@ func (sim *Simulator) BatchUpdate(startSerial, endSerial int, version string) er
 // Show the status of a specific device
 func (sim *Simulator) GetDeviceStatus(serialNumber int) (map[string]interface{}, error) {
 	serialNumberStr := fmt.Sprintf("%010d", serialNumber)
+	sim.mu.Lock()
+	defer sim.mu.Unlock()
 	for _, device := range sim.devices {
 		if device.SerialNumber == serialNumberStr {
 			sim.log.Printf("Device %v: FirmwareVersion=%s, State=%s\n", serialNumber, device.FirmwareVersion, device.State)
-			return map[string]interface{}{"serial_number": serialNumberStr, "firmware_version": device.FirmwareVersion, "state": device.State}, nil
+			return map[string]interface{}{
+				"serial_number":    serialNumberStr,
+				"firmware_version": device.FirmwareVersion,
+				"state":            device.State,
+				"update_history":   device.UpdateHistory,
+			}, nil
 		}
 	}
 	sim.log.Printf("Device with serial number %v not found.\n", serialNumber)
@@ -116,12 +140,15 @@ func (sim *Simulator) GetDeviceStatus(serialNumber int) (map[string]interface{},
 // List all devices with their status
 func (sim *Simulator) GetDeviceList() ([]map[string]interface{}, error) {
 	var deviceList []map[string]interface{}
+	sim.mu.Lock()
+	defer sim.mu.Unlock()
 	for _, device := range sim.devices {
 		sim.log.Printf("Device %s: FirmwareVersion=%s, State=%s\n", device.SerialNumber, device.FirmwareVersion, device.State)
 		deviceList = append(deviceList, map[string]interface{}{
 			"serial_number":    device.SerialNumber,
 			"firmware_version": device.FirmwareVersion,
 			"state":            device.State,
+			"update_history":   device.UpdateHistory,
 		})
 	}
 	return deviceList, nil
@@ -167,7 +194,7 @@ func (sim *Simulator) Setup(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-
+	sim.ctx = ctx
 	// Handle the different commands based on the flags
 	var exe = NewExecuter(*endpoint)
 	switch {
@@ -202,7 +229,7 @@ func (sim *Simulator) Setup(ctx context.Context, args []string) error {
 		}
 		start, _ := strconv.Atoi(rangeParts[0])
 		end, _ := strconv.Atoi(rangeParts[1])
-		exe.BatchReplay(start, end)
+		_ = exe.BatchReplay(start, end)
 	case *port > 0:
 		sim.port = *port
 		fmt.Printf("Simulator will run on port %d\n", sim.port)
@@ -228,7 +255,7 @@ func (sim *Simulator) SetReady(bool) {
 	sim.ready = true
 }
 
-func (sim *Simulator) restoreDevices() ([]*Device, error) {
+func (sim *Simulator) restoreDevices(ctx context.Context) ([]*Device, error) {
 	var devices []*Device
 
 	dir, err := os.Getwd()
@@ -254,11 +281,7 @@ func (sim *Simulator) restoreDevices() ([]*Device, error) {
 			}
 
 			devices = append(devices, &device)
-			go func() {
-				if err := device.Register(); err != nil {
-					sim.log.Printf("Failed to register device %s: %v\n", device.SerialNumber, err)
-				}
-			}()
+			go device.RegisterProc(ctx, 5*time.Second)
 		}
 	}
 
@@ -271,11 +294,11 @@ func (sim *Simulator) Run(ctx context.Context) error {
 	}
 	// restore device list
 	var err error
-	sim.devices, err = sim.restoreDevices()
+	sim.devices, err = sim.restoreDevices(ctx)
 	if err != nil {
 		sim.log.Printf("Failed to restore devices: %v\n", err)
 	}
-	logManager := audit.NewManager()
+	logManager := audit.NewManager("sim_log.json")
 	var log, _ = logging.NewLogger("INFO", os.Stdout, "")
 	var srvConf = config.ServiceConfig{
 		Version:         1,

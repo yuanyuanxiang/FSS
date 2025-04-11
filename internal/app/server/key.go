@@ -33,7 +33,6 @@ func getOrCreatePrivateKey(path string) (*ecdh.PrivateKey, error) {
 		path = basePath
 	}
 
-	fmt.Printf("🔐 New P384 ECDH key generated at: %s\n", path)
 	return privateKey, nil
 }
 

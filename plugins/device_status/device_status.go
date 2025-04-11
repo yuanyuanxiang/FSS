@@ -47,12 +47,20 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	serialNumber := request.URL.Path[strings.LastIndex(request.URL.Path, "/")+1:]
 	if serialNumber == "" {
 		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("serial number is required")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "serial number is required",
+		}
+		return nil
 	}
 	status, err := p.sim.GetDeviceStatus(cvt.ToInt(serialNumber))
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
-		return fmt.Errorf("failed to show device status: %v", err)
+		response.Data = map[string]interface{}{
+			"code": http.StatusInternalServerError,
+			"msg":  fmt.Sprintf("failed to show device status: %v", err),
+		}
+		return nil
 	}
 
 	response.Data["status"] = status

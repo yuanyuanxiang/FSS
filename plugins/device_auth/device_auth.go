@@ -65,14 +65,14 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 		err = p.auth.AuthorizeDevice(serialNumber)
 	default:
 		response.WriteHeader(http.StatusBadRequest)
-		response.Data = map[string]interface{}{"code": 400, "msg": "invalid operation"}
-		return fmt.Errorf("invalid operation: %s", operation)
+		response.Data = map[string]interface{}{"code": http.StatusBadRequest, "msg": "invalid operation"}
+		return nil
 	}
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "failed to "+operation, http.StatusInternalServerError, err)
-		response.Data = map[string]interface{}{"code": 500, "msg": err.Error()}
-		return fmt.Errorf("failed to %s device: %v", operation, err)
+		response.Data = map[string]interface{}{"code": http.StatusInternalServerError, "msg": err.Error()}
+		return nil
 	}
 	response.Data = map[string]interface{}{
 		"code":          0,

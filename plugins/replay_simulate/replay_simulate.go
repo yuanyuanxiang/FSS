@@ -55,7 +55,11 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	serialNumber := request.URL.Path[strings.LastIndex(request.URL.Path, "/")+1:]
 	if serialNumber == "" {
 		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("serial number is required")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "serial number is required",
+		}
+		return nil
 	}
 	var err error
 	startSerial := cvt.ToInt(serialNumber)
@@ -67,7 +71,11 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	}
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
-		return fmt.Errorf("failed to replay devices: %v", err)
+		response.Data = map[string]interface{}{
+			"code": http.StatusInternalServerError,
+			"msg":  fmt.Sprintf("failed to replay devices: %v", err),
+		}
+		return nil
 	}
 	response.Data = map[string]interface{}{
 		"code": 0,

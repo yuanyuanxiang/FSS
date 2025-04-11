@@ -3,7 +3,6 @@ package allowance_update
 // Package allowance_update provides a plugin for updating device allowances.
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/luraproject/lura/v2/config"
@@ -61,7 +60,8 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	allowanceInc := cvt.ToInt(request.Private["increase_allowance"])
 	if allowanceInc <= 0 {
 		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("invalid increase_allowance: %d", allowanceInc)
+		response.Data = map[string]interface{}{"code": http.StatusBadRequest, "msg": "invalid increase_allowance"}
+		return nil
 	}
 	p.allow.IncreaseAllowance("", allowanceInc)
 	response.Data = map[string]interface{}{"code": 0, "msg": "ok", "allowance": p.allow.GetAllowance("")}

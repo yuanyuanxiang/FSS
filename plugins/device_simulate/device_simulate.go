@@ -57,12 +57,20 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	startSerial := cvt.ToInt(request.Private["start-serial"])
 	if generate <= 0 || startSerial <= 0 {
 		response.WriteHeader(http.StatusBadRequest)
-		return fmt.Errorf("generate and start-serial must be greater than 0")
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  "generate and start-serial must be greater than 0",
+		}
+		return nil
 	}
 	err := p.gen.GenerateDevices(masterAddress, generate, startSerial)
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
-		return fmt.Errorf("failed to generate devices: %v", err)
+		response.Data = map[string]interface{}{
+			"code": http.StatusInternalServerError,
+			"msg":  fmt.Sprintf("failed to generate devices: %v", err),
+		}
+		return nil
 	}
 	response.Data = map[string]interface{}{
 		"code": 0,

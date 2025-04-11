@@ -4,13 +4,19 @@ package server
 // for managing device registration and session management in the server.
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/yuanyuanxiang/fss/internal/pkg/common"
 	cvt "github.com/yuanyuanxiang/fss/pkg/convert"
+)
+
+const (
+	CONFIG_PATH = "settings.ini"
 )
 
 // SessionManager interface defines methods for managing user sessions.
@@ -132,21 +138,28 @@ type DeviceManager interface {
 
 type DeviceManagerImpl struct {
 	mu        sync.Mutex
-	allowance int
-	DevList   map[string]map[string]interface{}
+	Allowance int
+	devList   map[string]map[string]interface{}
 }
 
 func NewDeviceManager(allowance int) *DeviceManagerImpl {
-	return &DeviceManagerImpl{
-		allowance: allowance,
-		DevList:   make(map[string]map[string]interface{}),
+	dev := &DeviceManagerImpl{
+		Allowance: allowance,
+		devList:   make(map[string]map[string]interface{}),
 	}
+	data, _ := os.ReadFile(CONFIG_PATH)
+	settings := map[string]interface{}{}
+	err := json.Unmarshal(data, &settings)
+	if err == nil {
+		dev.Allowance = cvt.ToInt(settings["allowance"])
+	}
+	return dev
 }
 
 func (d *DeviceManagerImpl) IsDeviceRegistered(serialNumber string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if m, ok := d.DevList[serialNumber]; ok {
+	if m, ok := d.devList[serialNumber]; ok {
 		authorize := cvt.ToBoolean(m["is_verified"])
 		if !authorize {
 			return fmt.Errorf("device is authorized")
@@ -159,27 +172,25 @@ func (d *DeviceManagerImpl) IsDeviceRegistered(serialNumber string) error {
 func (d *DeviceManagerImpl) RegisterDevice(serialNumber, publicKey, state string, isVerified bool) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.allowance <= 0 {
+	if d.Allowance <= 0 {
 		return fmt.Errorf("allowance exceeded")
 	}
-	if _, ok := d.DevList[serialNumber]; ok {
-		fmt.Printf("Device %s is already registered\n", serialNumber)
-	} else {
-		d.allowance--
+	if _, ok := d.devList[serialNumber]; !ok {
+		d.Allowance--
 	}
-	d.DevList[serialNumber] = make(map[string]interface{})
-	d.DevList[serialNumber]["serial_number"] = serialNumber
-	d.DevList[serialNumber]["public_key"] = publicKey
-	d.DevList[serialNumber]["is_verified"] = isVerified
-	d.DevList[serialNumber]["state"] = state
-	fmt.Printf("Device %s registered with public key: %s\n", serialNumber, publicKey)
+	d.devList[serialNumber] = make(map[string]interface{})
+	d.devList[serialNumber]["serial_number"] = serialNumber
+	d.devList[serialNumber]["public_key"] = publicKey
+	d.devList[serialNumber]["is_verified"] = isVerified
+	d.devList[serialNumber]["state"] = state
+
 	return nil
 }
 
 func (d *DeviceManagerImpl) GetDevicePublicKey(serialNumber string) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if dev, ok := d.DevList[serialNumber]; ok {
+	if dev, ok := d.devList[serialNumber]; ok {
 		return cvt.ToString(dev["public_key"])
 	}
 	return ""
@@ -188,8 +199,8 @@ func (d *DeviceManagerImpl) GetDevicePublicKey(serialNumber string) string {
 func (d *DeviceManagerImpl) GetDeviceList() ([]map[string]interface{}, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	devices := make([]map[string]interface{}, 0, len(d.DevList))
-	for _, device := range d.DevList {
+	devices := make([]map[string]interface{}, 0, len(d.devList))
+	for _, device := range d.devList {
 		devices = append(devices, device)
 	}
 	return devices, nil
@@ -198,14 +209,14 @@ func (d *DeviceManagerImpl) GetDeviceList() ([]map[string]interface{}, error) {
 func (d *DeviceManagerImpl) BlockDevice(serialNumber string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if m, ok := d.DevList[serialNumber]; ok {
+	if m, ok := d.devList[serialNumber]; ok {
 		m["is_verified"] = false // marked as unauthorized
 	} else {
-		d.DevList[serialNumber] = make(map[string]interface{})
-		d.DevList[serialNumber]["serial_number"] = serialNumber
-		d.DevList[serialNumber]["public_key"] = ""
-		d.DevList[serialNumber]["is_verified"] = false
-		d.DevList[serialNumber]["state"] = ""
+		d.devList[serialNumber] = make(map[string]interface{})
+		d.devList[serialNumber]["serial_number"] = serialNumber
+		d.devList[serialNumber]["public_key"] = ""
+		d.devList[serialNumber]["is_verified"] = false
+		d.devList[serialNumber]["state"] = ""
 	}
 	return nil
 }
@@ -213,14 +224,14 @@ func (d *DeviceManagerImpl) BlockDevice(serialNumber string) error {
 func (d *DeviceManagerImpl) AuthorizeDevice(serialNumber string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if m, ok := d.DevList[serialNumber]; ok {
+	if m, ok := d.devList[serialNumber]; ok {
 		m["is_verified"] = true // marked as unauthorized
 	} else {
-		d.DevList[serialNumber] = make(map[string]interface{})
-		d.DevList[serialNumber]["serial_number"] = serialNumber
-		d.DevList[serialNumber]["public_key"] = ""
-		d.DevList[serialNumber]["is_verified"] = true
-		d.DevList[serialNumber]["state"] = ""
+		d.devList[serialNumber] = make(map[string]interface{})
+		d.devList[serialNumber]["serial_number"] = serialNumber
+		d.devList[serialNumber]["public_key"] = ""
+		d.devList[serialNumber]["is_verified"] = true
+		d.devList[serialNumber]["state"] = ""
 	}
 	return nil
 }
@@ -228,11 +239,14 @@ func (d *DeviceManagerImpl) AuthorizeDevice(serialNumber string) error {
 func (d *DeviceManagerImpl) GetAllowance(key string) int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.allowance
+	return d.Allowance
 }
 
 func (d *DeviceManagerImpl) IncreaseAllowance(key string, inc int) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.allowance += inc
+	d.Allowance += inc
+	// use database instead
+	data, _ := json.MarshalIndent(map[string]interface{}{"allowance": d.Allowance}, "", "  ")
+	_ = os.WriteFile(CONFIG_PATH, data, 0644)
 }

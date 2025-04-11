@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/luraproject/lura/v2/config"
 	"github.com/luraproject/lura/v2/proxy"
@@ -38,13 +39,19 @@ func (f factory) New(cfg *config.PluginConfig, infra interface{}) (vicg.VicgPlug
 	}, nil
 }
 
-func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) error {
+func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) (resp error) {
 	if request.Body != nil {
 		if data, err := io.ReadAll(request.Body); err == nil {
 			request.Body = io.NopCloser(bytes.NewBuffer(data))
-			return json.Unmarshal(data, &request.Private)
+			resp = json.Unmarshal(data, &request.Private)
 		} else {
-			return fmt.Errorf("failed to read request body: %v", err)
+			resp = fmt.Errorf("failed to read request body: %v", err)
+		}
+	}
+	if resp != nil {
+		response.Data = map[string]interface{}{
+			"code": http.StatusBadRequest,
+			"msg":  resp.Error(),
 		}
 	}
 

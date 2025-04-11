@@ -143,7 +143,7 @@ func (svr *Server) Run(ctx context.Context) error {
 	if svr.port <= 0 {
 		return nil
 	}
-	logManager := audit.NewManager()
+	logManager := audit.NewManager("svr_log.json")
 	var log, _ = logging.NewLogger("INFO", os.Stdout, "")
 	var srvConf = config.ServiceConfig{
 		Version:         1,
