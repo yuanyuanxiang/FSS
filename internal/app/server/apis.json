@@ -51,10 +51,6 @@
                     "Index": 0
                 },
                 {
-                    "Name": "Challenge_Verify",
-                    "Index": 1
-                },
-                {
                     "Name": "Firmware_Update",
                     "Index": 2
                 }

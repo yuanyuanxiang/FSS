@@ -7,7 +7,7 @@
 	},
 	"item": [
 		{
-			"name": "Challenge_Gen",
+			"name": "01.Challenge_Gen",
 			"request": {
 				"method": "GET",
 				"header": [],
@@ -27,53 +27,13 @@
 			"response": []
 		},
 		{
-			"name": "Log_Updates",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{server}}:{{port}}/api/logs/updates",
-					"host": [
-						"{{server}}"
-					],
-					"port": "{{port}}",
-					"path": [
-						"api",
-						"logs",
-						"updates"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Log_Incidents",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{server}}:{{port}}/api/logs/incidents",
-					"host": [
-						"{{server}}"
-					],
-					"port": "{{port}}",
-					"path": [
-						"api",
-						"logs",
-						"incidents"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Challenge_Verify",
+			"name": "02.Challenge_Verify",
 			"request": {
 				"method": "POST",
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\r\n    \"challenge\": \"8150911afee5cf54db296c736b9ea13fa57d1d71b3a41272d156969306d9d11c\",\r\n    \"expiresIn\": \"5m\",\r\n    \"serial_number\": \"0000000001\"\r\n}",
+					"raw": "{\r\n    \"challenge\": \"8150911afee5cf54db296c736b9ea13fa57d1d71b3a41272d156969306d9d11c\",\r\n    \"signature\": \"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890\",\r\n    \"serial_number\": \"0000000001\"\r\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -95,13 +55,19 @@
 			"response": []
 		},
 		{
-			"name": "Device_Register",
+			"name": "03.Device_Register",
 			"request": {
 				"method": "POST",
-				"header": [],
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer 0000000001000001111122222",
+						"type": "text"
+					}
+				],
 				"body": {
 					"mode": "raw",
-					"raw": "\t{\r\n\t\t\"serial_number\": \"0000000001\",\r\n\t\t\"public_key\": \"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890\"\r\n\t}",
+					"raw": "{\r\n    \"serial_number\": \"0000000001\",\r\n    \"public_key\": \"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890\"\r\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -123,13 +89,16 @@
 			"response": []
 		},
 		{
-			"name": "Device_Simulate",
+			"name": "04.Firmware_Update",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
 			"request": {
-				"method": "POST",
+				"method": "GET",
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "\t{\r\n        \"master_address\":\"127.0.0.1:9000\",\r\n\t\t\"generate\": \"10\",\r\n\t\t\"start-serial\":1\r\n\t}",
+					"raw": "{\r\n    \"serial_number\": \"0000000001\",\r\n    \"signature\": \"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890\",\r\n    \"challenge\": \"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890\"\r\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -137,21 +106,22 @@
 					}
 				},
 				"url": {
-					"raw": "{{server}}:{{port}}/api/generate",
+					"raw": "{{server}}:{{port}}/api/firmware/1.0.1",
 					"host": [
 						"{{server}}"
 					],
 					"port": "{{port}}",
 					"path": [
 						"api",
-						"generate"
+						"firmware",
+						"1.0.1"
 					]
 				}
 			},
 			"response": []
 		},
 		{
-			"name": "Allowance_Update",
+			"name": "05.Allowance_Update",
 			"request": {
 				"method": "POST",
 				"header": [],
@@ -179,13 +149,142 @@
 			"response": []
 		},
 		{
-			"name": "Request_Update",
+			"name": "06.Device_List",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{server}}:{{port}}/api/devices",
+					"host": [
+						"{{server}}"
+					],
+					"port": "{{port}}",
+					"path": [
+						"api",
+						"devices"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "07.Log_Updates",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{server}}:{{port}}/api/logs/updates",
+					"host": [
+						"{{server}}"
+					],
+					"port": "{{port}}",
+					"path": [
+						"api",
+						"logs",
+						"updates"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "08.Log_Incidents",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{server}}:{{port}}/api/logs/incidents",
+					"host": [
+						"{{server}}"
+					],
+					"port": "{{port}}",
+					"path": [
+						"api",
+						"logs",
+						"incidents"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "09.Request_Block",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "{{server}}:{{port}}/api/devices/0000000001/block",
+					"host": [
+						"{{server}}"
+					],
+					"port": "{{port}}",
+					"path": [
+						"api",
+						"devices",
+						"0000000001",
+						"block"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "10.Request_Authorize",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "{{server}}:{{port}}/api/devices/0000000001/authorize",
+					"host": [
+						"{{server}}"
+					],
+					"port": "{{port}}",
+					"path": [
+						"api",
+						"devices",
+						"0000000001",
+						"authorize"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "01.Device_Simulate",
 			"request": {
 				"method": "POST",
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "\t{\r\n\t\t\"version\": \"1.0.1\"\r\n\t}",
+					"raw": "{\r\n    \"master_address\": \"127.0.0.1:9000\",\r\n    \"generate\": \"10\",\r\n    \"start-serial\": 1\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{server}}:{{port}}/api/generate",
+					"host": [
+						"{{server}}"
+					],
+					"port": "{{port}}",
+					"path": [
+						"api",
+						"generate"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "02.Request_Update",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"version\": \"1.0.1\"\r\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -209,13 +308,13 @@
 			"response": []
 		},
 		{
-			"name": "Batch_Update",
+			"name": "03.Batch_Update",
 			"request": {
 				"method": "POST",
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "\t{\r\n        \"start_serial\": 0,\r\n        \"end_serial\" :4,\r\n\t\t\"version\": \"1.0.1\"\r\n\t}",
+					"raw": "{\r\n    \"start_serial\": 2,\r\n    \"end_serial\": 4,\r\n    \"version\": \"1.0.1\"\r\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -238,21 +337,12 @@
 			"response": []
 		},
 		{
-			"name": "Request_Block",
+			"name": "04.Device_Status",
 			"request": {
-				"method": "POST",
+				"method": "GET",
 				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "\t{\r\n\t\t\"increase_allowance\": 10\r\n\t}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
 				"url": {
-					"raw": "{{server}}:{{port}}/api/devices/0000000001/block",
+					"raw": "{{server}}:{{port}}/api/devices/0000000001",
 					"host": [
 						"{{server}}"
 					],
@@ -260,29 +350,40 @@
 					"path": [
 						"api",
 						"devices",
-						"0000000001",
-						"block"
+						"0000000001"
 					]
 				}
 			},
 			"response": []
 		},
 		{
-			"name": "Request_Authorize",
+			"name": "05.Replay_Simulate",
 			"request": {
 				"method": "POST",
 				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "\t{\r\n\t\t\"increase_allowance\": 10\r\n\t}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
 				"url": {
-					"raw": "{{server}}:{{port}}/api/devices/0000000001/authorize",
+					"raw": "{{server}}:{{port}}/api/simulate/replay/0000000001",
+					"host": [
+						"{{server}}"
+					],
+					"port": "{{port}}",
+					"path": [
+						"api",
+						"simulate",
+						"replay",
+						"0000000001"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "06.Device_List",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{server}}:{{port}}/api/devices/status",
 					"host": [
 						"{{server}}"
 					],
@@ -290,8 +391,7 @@
 					"path": [
 						"api",
 						"devices",
-						"0000000001",
-						"authorize"
+						"status"
 					]
 				}
 			},

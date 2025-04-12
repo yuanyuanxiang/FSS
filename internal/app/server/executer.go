@@ -15,7 +15,7 @@ type Executer interface {
 	GetDeviceList() ([]map[string]interface{}, error)
 	BlockDevice(serialNumber string) error
 	AuthorizeDevice(serialNumber string) error
-	IncreaseAllowance(key string, inc int) error
+	IncreaseAllowance(key string, inc int) (int, error)
 	GetAuditLogs(typ string) ([]map[string]interface{}, error)
 }
 
@@ -86,12 +86,12 @@ func (e *ExecuterImpl) AuthorizeDevice(serialNumber string) error {
 	return err
 }
 
-func (e *ExecuterImpl) IncreaseAllowance(key string, inc int) error {
+func (e *ExecuterImpl) IncreaseAllowance(key string, inc int) (int, error) {
 	m := map[string]interface{}{
 		"increase_allowance": inc,
 	}
-	_, err := e.request(http.MethodPost, "/api/update-allowance", m)
-	return err
+	v, err := e.request(http.MethodPost, "/api/update-allowance", m)
+	return cvt.ToInt(v["allowance"]), err
 }
 
 func (e *ExecuterImpl) GetAuditLogs(typ string) ([]map[string]interface{}, error) {

@@ -72,37 +72,57 @@ func (svr *Server) Setup(ctx context.Context, args []string) error {
 	case *port > 0 && *allowance > 0:
 		svr.port = *port
 		svr.allowance = *allowance
-		fmt.Printf("Server started on port %d, allowance: %d", *port, *allowance)
+		fmt.Printf("Server started on port %d, allowance: %d\n", *port, *allowance)
+
 	case *increaseAllowance > 0:
-		fmt.Println("Increasing allowance by:", *increaseAllowance)
-		return exe.IncreaseAllowance("", *increaseAllowance)
+		allow, err := exe.IncreaseAllowance("", *increaseAllowance)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Increasing allowance by %d succeed. Current allowance: %d\n", *increaseAllowance, allow)
+		os.Exit(0)
+
 	case *listDevices:
 		list, err := exe.GetDeviceList()
 		if err != nil {
 			return err
 		}
-		fmt.Println("Registered devices:")
-		fmt.Println(list)
+		data, _ := json.MarshalIndent(list, "", "  ")
+		fmt.Printf("Registered devices: %d\n%s\n", len(list), string(data))
+		os.Exit(0)
+
 	case *showIncidents:
 		list, err := exe.GetAuditLogs(string(audit.TYPE_INCIDENT))
 		if err != nil {
 			return err
 		}
-		fmt.Println("Security incidents:")
-		fmt.Println(list)
+		data, _ := json.MarshalIndent(list, "", "  ")
+		fmt.Printf("Security incidents: %d\n%s\n", len(list), string(data))
+		os.Exit(0)
+
 	case *showUpdates:
 		list, err := exe.GetAuditLogs(string(audit.TYPE_UPDATE))
 		if err != nil {
 			return err
 		}
-		fmt.Println("Update logs:")
-		fmt.Println(list)
+		data, _ := json.MarshalIndent(list, "", "  ")
+		fmt.Printf("Update logs: %d\n%s\n", len(list), string(data))
+		os.Exit(0)
+
 	case *block != "":
-		fmt.Println("Blocking device:", *block)
-		return exe.BlockDevice(*block)
+		if err := exe.BlockDevice(*block); err != nil {
+			return err
+		}
+		fmt.Println("Succeed blocking device: ", *block)
+		os.Exit(0)
+
 	case *authorize != "":
-		fmt.Println("Authorizing device:", *authorize)
-		return exe.AuthorizeDevice(*block)
+		if err := exe.AuthorizeDevice(*block); err != nil {
+			return err
+		}
+		fmt.Println("Succeed authorizing device: ", *authorize)
+		os.Exit(0)
+
 	default:
 		fmt.Println("Usage: server --port=<port> - Start the server on specified port")
 		fmt.Println("       server --allowance=<number> - Set initial device registration allowance")

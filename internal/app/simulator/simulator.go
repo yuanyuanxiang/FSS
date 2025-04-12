@@ -177,7 +177,8 @@ func (sim *Simulator) replayFunc(d *Device, v map[string]interface{}, auth, vers
 
 	for i := 0; i < 2; i++ {
 		if err := <-errs; err != nil {
-			return err
+			log.Warnf("Replay %v: %v\n", d.SerialNumber, err)
+			return nil
 		}
 	}
 	return nil
@@ -235,9 +236,21 @@ func (sim *Simulator) Setup(ctx context.Context, args []string) error {
 	var exe = NewExecuter(*endpoint)
 	switch {
 	case *generateCount > 0 && *startSerial >= 0:
-		return exe.GenerateDevices(*server, *generateCount, *startSerial)
+		err := exe.GenerateDevices(*server, *generateCount, *startSerial)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Generate %v devices succeed\n", *generateCount)
+		os.Exit(0)
+
 	case *updateSerial > 0:
-		return exe.UpdateDevice(*updateSerial, "1.0.1")
+		err := exe.UpdateDevice(*updateSerial, "1.0.1")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Update device %v succeed\n", *updateSerial)
+		os.Exit(0)
+
 	case *batchUpdateRange != "":
 		rangeParts := strings.Split(*batchUpdateRange, "-")
 		if len(rangeParts) != 2 {
@@ -248,16 +261,38 @@ func (sim *Simulator) Setup(ctx context.Context, args []string) error {
 		if start < 0 || end < 0 || end < start {
 			return fmt.Errorf("invalid batch update range. Please use 'startSerial-endSerial'")
 		}
-		return exe.BatchUpdate(start, end, "1.0.1")
+		if err := exe.BatchUpdate(start, end, "1.0.1"); err != nil {
+			return err
+		}
+		fmt.Printf("Update devices %v succeed\n", *batchUpdateRange)
+		os.Exit(0)
+
 	case *statusSerial >= 0:
 		s, err := exe.GetDeviceStatus(*statusSerial)
-		if err == nil {
-			fmt.Println(s)
+		if err != nil {
+			return err
 		}
-		return err
+		data, _ := json.MarshalIndent(s, "", "  ")
+		fmt.Printf("Device %v status: \n%s\n", *statusSerial, string(data))
+		os.Exit(0)
+
 	case *listAll:
+		arr, err := exe.GetDeviceList()
+		if err != nil {
+			return err
+		}
+		data, _ := json.MarshalIndent(arr, "", "  ")
+		fmt.Printf("Get device list: %d\n%s\n", len(arr), string(data))
+		os.Exit(0)
+
 	case *replaySerial >= 0:
-		return exe.Replay(*replaySerial)
+		err := exe.Replay(*replaySerial)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Replay device %v succeed\n", *replaySerial)
+		os.Exit(0)
+
 	case *batchReplayRange != "":
 		rangeParts := strings.Split(*batchReplayRange, "-")
 		if len(rangeParts) != 2 {
@@ -265,10 +300,17 @@ func (sim *Simulator) Setup(ctx context.Context, args []string) error {
 		}
 		start, _ := strconv.Atoi(rangeParts[0])
 		end, _ := strconv.Atoi(rangeParts[1])
-		_ = exe.BatchReplay(start, end)
+		err := exe.BatchReplay(start, end)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Replay device %v succeed\n", *batchReplayRange)
+		os.Exit(0)
+
 	case *port > 0:
 		sim.port = *port
 		fmt.Printf("Simulator will run on port %d\n", sim.port)
+
 	default:
 		fmt.Println("Usage: simulator --generate=<count> --start-serial=<number>")
 		fmt.Println("       simulator --update=<serialNumber>")
