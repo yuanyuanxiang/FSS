@@ -51,18 +51,20 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 			"code": http.StatusBadRequest,
 			"msg":  "serial number is required",
 		}
-		return nil
+		return p.Error()
 	}
 	status, err := p.sim.GetDeviceStatus(cvt.ToInt(serialNumber))
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		response.Data = map[string]interface{}{
-			"code": http.StatusInternalServerError,
-			"msg":  fmt.Sprintf("failed to show device status: %v", err),
+			"code":          http.StatusInternalServerError,
+			"msg":           fmt.Sprintf("failed to show device status: %v", err),
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
-
+	response.Data["code"] = 0
+	response.Data["msg"] = "success"
 	response.Data["status"] = status
 	response.Data["serial_number"] = serialNumber
 
@@ -71,4 +73,8 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 
 func (p *Plugin) Priority() int {
 	return p.index
+}
+
+func (p *Plugin) Error() error {
+	return fmt.Errorf("failed on plugin: '%s'", p.name)
 }

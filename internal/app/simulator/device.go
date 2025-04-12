@@ -51,6 +51,8 @@ type Device struct {
 	UpdateHistory   []UpdateRecord   `json:"update_history"`
 }
 
+type Callback func(d *Device, v map[string]interface{}, auth, version string) error
+
 func (d *Device) GetChallenge() (string, error) {
 	// get challenge
 	resp, err := client.Get(fmt.Sprintf("http://%s/api/challenge/%s", d.MasterAddress, d.SerialNumber))
@@ -72,6 +74,31 @@ func (d *Device) GetChallenge() (string, error) {
 	}
 	challenge := cvt.ToString(m["challenge"])
 	return challenge, nil
+}
+
+func (d *Device) GetToken(challenge string) (string, error) {
+	signature := common.SignSignature(challenge, string(d.SymmetricKey))
+	// verify
+	data, _ := json.Marshal(map[string]interface{}{"serial_number": d.SerialNumber, "signature": signature, "challenge": challenge})
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/verify", d.MasterAddress), bytes.NewBuffer(data))
+	if err != nil {
+		return "", err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("failed to verify device: %s", resp.Status)
+	}
+	data, _ = io.ReadAll(resp.Body)
+	var token map[string]interface{}
+	err = json.Unmarshal(data, &token)
+	if err != nil {
+		return "", err
+	}
+	auth := cvt.ToString(token["token"])
+	return auth, nil
 }
 
 func (d *Device) RegisterProc(ctx context.Context, duration time.Duration) {
@@ -99,36 +126,20 @@ func (d *Device) Register() error {
 	if err != nil {
 		return err
 	}
-	signature := common.SignSignature(challenge, string(d.SymmetricKey))
 	// verify
-	data, _ := json.Marshal(map[string]interface{}{"serial_number": d.SerialNumber, "signature": signature, "challenge": challenge})
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/verify", d.MasterAddress), bytes.NewBuffer(data))
+	auth, err := d.GetToken(challenge)
 	if err != nil {
 		return err
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("failed to verify device: %s", resp.Status)
-	}
-	data, _ = io.ReadAll(resp.Body)
-	var token map[string]interface{}
-	err = json.Unmarshal(data, &token)
-	if err != nil {
-		return err
-	}
-	auth := cvt.ToString(token["token"])
 	// register
 	pubKeyBase64 := common.PublicKeyToBase64(d.PublicKey)
-	data, _ = json.Marshal(map[string]interface{}{"serial_number": d.SerialNumber, "public_key": pubKeyBase64, "state": d.State})
-	req, err = http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/register", d.MasterAddress), bytes.NewBuffer(data))
+	data, _ := json.Marshal(map[string]interface{}{"serial_number": d.SerialNumber, "public_key": pubKeyBase64, "state": d.State})
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/register", d.MasterAddress), bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", auth)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -151,7 +162,7 @@ func (d *Device) Register() error {
 	return d.Save()
 }
 
-func (d *Device) Update(version string) error {
+func (d *Device) Update(callback Callback, version string) error {
 	if d.ServerPublicKey == nil {
 		return fmt.Errorf("server public key is nil")
 	}
@@ -160,18 +171,30 @@ func (d *Device) Update(version string) error {
 	if err != nil {
 		return err
 	}
+	// verify
+	auth, err := d.GetToken(challenge)
+	if err != nil {
+		return err
+	}
+
 	signature := common.SignSignature(challenge, string(d.SymmetricKey))
 	// update the device
-	data, _ := json.Marshal(map[string]interface{}{
+	return callback(d, map[string]interface{}{
 		"serial_number": d.SerialNumber,
 		"challenge":     challenge,
 		"signature":     signature,
-	})
+	}, auth, version)
+}
+
+// communicate with server to get firmware
+func getFirmware(d *Device, v map[string]interface{}, auth, version string) error {
+	data, _ := json.Marshal(v)
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/api/firmware/%s", d.MasterAddress, version),
 		bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Authorization", auth)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

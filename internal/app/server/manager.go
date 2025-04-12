@@ -115,7 +115,7 @@ func (s *SessionManagerImpl) VerifyAuthHeader(authHeader string) (string, error)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.Tokkens[authHeader]; !ok {
-		return "", fmt.Errorf("invalid auth header")
+		return serialNumber, fmt.Errorf("invalid auth header")
 	}
 	delete(s.Tokkens, authHeader)
 	return serialNumber, nil

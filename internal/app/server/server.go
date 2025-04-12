@@ -170,7 +170,7 @@ func (svr *Server) Run(ctx context.Context) error {
 		"Challenge_Verify": challenge_verify.NewFactory(sessManeger, devManager, common.SymmetricKey),
 		"Device_Register":  device_register.NewFactory(sessManeger, devManager, common.PublicKeyToBase64(svr.key.PublicKey())),
 		"Allowance_Update": allowance_update.NewFactory(devManager),
-		"Firmware_Update":  firmware_update.NewFactory(devManager, svr.key),
+		"Firmware_Update":  firmware_update.NewFactory(sessManeger, devManager, svr.key),
 		"Device_List":      device_list.NewFactory(devManager),
 		"Device_Auth":      device_auth.NewFactory(devManager),
 		"Audit_Logs":       audit_logs.NewFactory(),

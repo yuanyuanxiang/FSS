@@ -102,7 +102,7 @@ func (sim *Simulator) UpdateDevice(serialNumber int, version string) error {
 	defer sim.mu.Unlock()
 	for _, device := range sim.devices {
 		if device.SerialNumber == serialNumberStr {
-			return device.Update(version)
+			return device.Update(getFirmware, version)
 		}
 	}
 	sim.log.Printf("Device with serial number %v not found.\n", serialNumber)
@@ -154,11 +154,47 @@ func (sim *Simulator) GetDeviceList() ([]map[string]interface{}, error) {
 	return deviceList, nil
 }
 
+func (sim *Simulator) GetDevice(serialNumber int) *Device {
+	serialNumberStr := fmt.Sprintf("%010d", serialNumber)
+	sim.mu.Lock()
+	defer sim.mu.Unlock()
+	for _, device := range sim.devices {
+		if device.SerialNumber == serialNumberStr {
+			return device
+		}
+	}
+	return nil
+}
+
+func (sim *Simulator) replayFunc(d *Device, v map[string]interface{}, auth, version string) error {
+	var errs = make(chan error, 2)
+	go func() {
+		errs <- getFirmware(d, v, auth, version)
+	}()
+	go func() {
+		errs <- getFirmware(d, v, auth, version)
+	}()
+
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Simulate a replay attack for a specific device
 func (sim *Simulator) Replay(serialNumber int) error {
 	sim.log.Printf("Simulating replay attack for device %v\n", serialNumber)
 	// Simulate replay logic here
 	// For example, you can send a request to the device with the same parameters as before
+	device := sim.GetDevice(serialNumber)
+	if device == nil {
+		return fmt.Errorf("device '%v' not found", serialNumber)
+	}
+	if err := device.Update(sim.replayFunc, "1.0.1"); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -59,7 +59,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 			"code": http.StatusInternalServerError,
 			"msg":  fmt.Sprintf("failed to list devices: %v", err),
 		}
-		return nil
+		return p.Error()
 	}
 	response.Data["devices"] = arr
 	response.Data["code"] = 0
@@ -71,4 +71,8 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 
 func (p *Plugin) Priority() int {
 	return p.index
+}
+
+func (p *Plugin) Error() error {
+	return fmt.Errorf("failed on plugin: '%s'", p.name)
 }

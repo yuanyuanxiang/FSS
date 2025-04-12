@@ -4,6 +4,7 @@ package challenge_gen
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -60,7 +61,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 			"code": http.StatusBadRequest,
 			"msg":  "serial number is required",
 		}
-		return nil
+		return p.Error()
 	}
 
 	challenge := common.GenerateChallenge()
@@ -83,4 +84,8 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 
 func (p *Plugin) Priority() int {
 	return p.index
+}
+
+func (p *Plugin) Error() error {
+	return fmt.Errorf("failed on plugin: '%s'", p.name)
 }

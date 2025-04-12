@@ -59,10 +59,17 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	response.Data["audit_logs"] = arr
 	response.Data["type"] = typ
 	response.Data["count"] = len(arr)
+	if err != nil {
+		return p.Error()
+	}
 
 	return nil
 }
 
 func (p *Plugin) Priority() int {
 	return p.index
+}
+
+func (p *Plugin) Error() error {
+	return fmt.Errorf("failed on plugin: '%s'", p.name)
 }

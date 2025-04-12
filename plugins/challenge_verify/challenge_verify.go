@@ -89,10 +89,11 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 		response.WriteHeader(http.StatusForbidden)
 		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "allowance exceeded", http.StatusForbidden)
 		response.Data = map[string]interface{}{
-			"code": http.StatusForbidden,
-			"msg":  "allowance exceeded",
+			"code":          http.StatusForbidden,
+			"msg":           "allowance exceeded",
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
 	signature := cvt.ToString(request.Private["signature"])
 	challenge := cvt.ToString(request.Private["challenge"])
@@ -104,20 +105,22 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 		response.WriteHeader(http.StatusUnauthorized)
 		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "invalid signature", http.StatusUnauthorized)
 		response.Data = map[string]interface{}{
-			"code": http.StatusUnauthorized,
-			"msg":  "invalid signature",
+			"code":          http.StatusUnauthorized,
+			"msg":           "invalid signature",
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
 
 	if !p.sess.IsValidSess(serialNumber, challenge) {
 		response.WriteHeader(http.StatusBadRequest)
 		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "invalid or expired session", http.StatusBadRequest)
 		response.Data = map[string]interface{}{
-			"code": http.StatusBadRequest,
-			"msg":  "invalid or expired session",
+			"code":          http.StatusBadRequest,
+			"msg":           "invalid or expired session",
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
 
 	// mark the session as verified. only can verify once.
@@ -125,10 +128,11 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 		response.WriteHeader(http.StatusBadRequest)
 		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "invalid or verified session", http.StatusBadRequest)
 		response.Data = map[string]interface{}{
-			"code": http.StatusBadRequest,
-			"msg":  "invalid or verified session",
+			"code":          http.StatusBadRequest,
+			"msg":           "invalid or verified session",
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
 
 	response.Data = map[string]interface{}{
@@ -144,4 +148,8 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 
 func (p *Plugin) Priority() int {
 	return p.index
+}
+
+func (p *Plugin) Error() error {
+	return fmt.Errorf("failed on plugin: '%s'", p.name)
 }

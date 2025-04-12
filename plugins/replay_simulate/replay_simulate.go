@@ -59,7 +59,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 			"code": http.StatusBadRequest,
 			"msg":  "serial number is required",
 		}
-		return nil
+		return p.Error()
 	}
 	var err error
 	startSerial := cvt.ToInt(serialNumber)
@@ -72,18 +72,24 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		response.Data = map[string]interface{}{
-			"code": http.StatusInternalServerError,
-			"msg":  fmt.Sprintf("failed to replay devices: %v", err),
+			"code":          http.StatusInternalServerError,
+			"msg":           fmt.Sprintf("failed to replay devices: %v", err),
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
 	response.Data = map[string]interface{}{
-		"code": 0,
-		"msg":  "success",
+		"code":          0,
+		"msg":           "success",
+		"serial_number": serialNumber,
 	}
 	return nil
 }
 
 func (p *Plugin) Priority() int {
 	return p.index
+}
+
+func (p *Plugin) Error() error {
+	return fmt.Errorf("failed on plugin: '%s'", p.name)
 }

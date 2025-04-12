@@ -60,7 +60,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 			"code": http.StatusBadRequest,
 			"msg":  "start_serial and end_serial must be greater than 0",
 		}
-		return nil
+		return p.Error()
 	}
 	if endSerial < startSerial {
 		response.WriteHeader(http.StatusBadRequest)
@@ -68,7 +68,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 			"code": http.StatusBadRequest,
 			"msg":  "end_serial must be greater than start_serial",
 		}
-		return nil
+		return p.Error()
 	}
 	version := cvt.ToString(request.Private["version"])
 	if version == "" {
@@ -77,7 +77,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 			"code": http.StatusBadRequest,
 			"msg":  "version is required",
 		}
-		return nil
+		return p.Error()
 	}
 	err := p.sim.BatchUpdate(startSerial, endSerial, version)
 	if err != nil {
@@ -86,7 +86,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 			"code": http.StatusInternalServerError,
 			"msg":  fmt.Sprintf("failed to batch update: %v", err),
 		}
-		return nil
+		return p.Error()
 	}
 	response.Data = map[string]interface{}{
 		"code": 0,
@@ -98,4 +98,8 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 
 func (p *Plugin) Priority() int {
 	return p.index
+}
+
+func (p *Plugin) Error() error {
+	return fmt.Errorf("failed on plugin: '%s'", p.name)
 }

@@ -14,8 +14,11 @@ import (
 	"github.com/luraproject/lura/v2/vicg"
 	"github.com/yuanyuanxiang/fss/internal/pkg/common"
 	"github.com/yuanyuanxiang/fss/pkg/audit"
-	cvt "github.com/yuanyuanxiang/fss/pkg/convert"
 )
+
+type SessionManager interface {
+	VerifyAuthHeader(authHeader string) (string, error)
+}
 
 type DeviceManager interface {
 	IsDeviceRegistered(serialNumber string) error
@@ -23,6 +26,7 @@ type DeviceManager interface {
 }
 
 type factory struct {
+	sess       SessionManager
 	dev        DeviceManager
 	serverPriv *ecdh.PrivateKey
 }
@@ -35,8 +39,8 @@ type Plugin struct {
 	log   audit.LogManager
 }
 
-func NewFactory(dev DeviceManager, serverPriv *ecdh.PrivateKey) vicg.VicgPluginFactory {
-	return factory{dev: dev, serverPriv: serverPriv}
+func NewFactory(sess SessionManager, dev DeviceManager, serverPriv *ecdh.PrivateKey) vicg.VicgPluginFactory {
+	return factory{sess: sess, dev: dev, serverPriv: serverPriv}
 }
 
 func (f factory) New(cfg *config.PluginConfig, infra interface{}) (vicg.VicgPlugin, error) {
@@ -60,13 +64,7 @@ func (f factory) New(cfg *config.PluginConfig, infra interface{}) (vicg.VicgPlug
 /*
 	Deliver signed firmware update to authenticated devices
 
-Request:
-
-	{
-		"serial_number": "0000000001",
-		"signature": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-		"challenge": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-	}
+Header: <Authorization: "xxx">
 
 Response:
 
@@ -79,38 +77,53 @@ Response:
 	}
 */
 func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, response *proxy.Response) error {
-	serialNumber := cvt.ToString(request.Private["serial_number"])
+	// verify auth header
+	serialNumber, err := p.sess.VerifyAuthHeader(request.HeaderGet("Authorization"))
+	if serialNumber == "" || err != nil {
+		response.WriteHeader(http.StatusUnauthorized)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "missing or invalid authorization header", http.StatusUnauthorized, err.Error())
+		response.Data = map[string]interface{}{
+			"code":          http.StatusUnauthorized,
+			"msg":           fmt.Sprintf("missing or invalid authorization header: %v", err),
+			"serial_number": serialNumber,
+		}
+		return p.Error()
+	}
+	// get firmware version
 	version := request.Path[strings.LastIndex(request.Path, "/")+1:]
 	if version == "" {
 		response.WriteHeader(http.StatusBadRequest)
 		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "request invalid version", http.StatusBadRequest)
 		response.Data = map[string]interface{}{
-			"code": http.StatusBadRequest,
-			"msg":  fmt.Sprintf("invalid version: %s", version),
+			"code":          http.StatusBadRequest,
+			"msg":           fmt.Sprintf("invalid version: %s", version),
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
 	// check if device is already registered
-	err := p.dev.IsDeviceRegistered(serialNumber)
+	err = p.dev.IsDeviceRegistered(serialNumber)
 	if err != nil {
 		response.WriteHeader(http.StatusConflict)
-		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "check device status failed", http.StatusConflict, err)
+		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "check device status failed", http.StatusConflict, err.Error())
 		response.Data = map[string]interface{}{
-			"code": http.StatusConflict,
-			"msg":  "check device status failed",
+			"code":          http.StatusConflict,
+			"msg":           "check device status failed",
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
 	// get client public key
 	clientPubKey, err := common.Base64ToPublicKey(p.dev.GetDevicePublicKey(serialNumber))
 	if err != nil {
 		response.WriteHeader(http.StatusBadRequest)
-		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "invalid public key", http.StatusBadRequest, err)
+		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "invalid public key", http.StatusBadRequest, err.Error())
 		response.Data = map[string]interface{}{
-			"code": http.StatusBadRequest,
-			"msg":  fmt.Sprintf("invalid public key: %v", err),
+			"code":          http.StatusBadRequest,
+			"msg":           fmt.Sprintf("invalid public key: %v", err),
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 
 	}
 	// derive shared secret
@@ -121,12 +134,13 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	encryptedData, err := common.EncryptData([]byte(firmwareData), encKey)
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
-		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "failed to encrypt response", http.StatusInternalServerError, err)
+		p.log.AddUpdateLog(request.RemoteAddr, serialNumber, "failed to encrypt response", http.StatusInternalServerError, err.Error())
 		response.Data = map[string]interface{}{
-			"code": http.StatusInternalServerError,
-			"msg":  fmt.Sprintf("failed to encrypt response: %v", err),
+			"code":          http.StatusInternalServerError,
+			"msg":           fmt.Sprintf("failed to encrypt response: %v", err),
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
 
 	base64Data := base64.StdEncoding.EncodeToString(encryptedData)
@@ -148,4 +162,8 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 
 func (p *Plugin) Priority() int {
 	return p.index
+}
+
+func (p *Plugin) Error() error {
+	return fmt.Errorf("failed on plugin: '%s'", p.name)
 }

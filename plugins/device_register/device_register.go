@@ -79,34 +79,37 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 	serialNumber, err := p.sess.VerifyAuthHeader(request.HeaderGet("Authorization"))
 	if serialNumber == "" || err != nil {
 		response.WriteHeader(http.StatusUnauthorized)
-		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "missing or invalid authorization header", http.StatusUnauthorized, err)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "missing or invalid authorization header", http.StatusUnauthorized, err.Error())
 		response.Data = map[string]interface{}{
-			"code": http.StatusUnauthorized,
-			"msg":  fmt.Sprintf("missing or invalid authorization header: %v", err),
+			"code":          http.StatusUnauthorized,
+			"msg":           fmt.Sprintf("missing or invalid authorization header: %v", err),
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
 
 	if cvt.ToString(request.Private["serial_number"]) != serialNumber {
 		response.WriteHeader(http.StatusBadRequest)
 		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "serial number mismatch", http.StatusBadRequest)
 		response.Data = map[string]interface{}{
-			"code": http.StatusBadRequest,
-			"msg":  "serial number mismatch",
+			"code":          http.StatusBadRequest,
+			"msg":           "serial number mismatch",
+			"serial_number": cvt.ToString(request.Private["serial_number"]),
 		}
-		return nil
+		return p.Error()
 	}
 
 	// register device: if the allowance is exceeded, it will also return an error
 	if err := p.dev.RegisterDevice(serialNumber, cvt.ToString(request.Private["public_key"]),
 		cvt.ToString(request.Private["state"]), true); err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
-		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "failed to register device", http.StatusInternalServerError, err)
+		p.log.AddIncidentLog(request.RemoteAddr, serialNumber, "failed to register device", http.StatusInternalServerError, err.Error())
 		response.Data = map[string]interface{}{
-			"code": http.StatusInternalServerError,
-			"msg":  fmt.Sprintf("failed to register device: %v", err),
+			"code":          http.StatusInternalServerError,
+			"msg":           fmt.Sprintf("failed to register device: %v", err),
+			"serial_number": serialNumber,
 		}
-		return nil
+		return p.Error()
 	}
 
 	response.Data = map[string]interface{}{
@@ -122,4 +125,8 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 
 func (p *Plugin) Priority() int {
 	return p.index
+}
+
+func (p *Plugin) Error() error {
+	return fmt.Errorf("failed on plugin: '%s'", p.name)
 }

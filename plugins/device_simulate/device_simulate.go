@@ -61,7 +61,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 			"code": http.StatusBadRequest,
 			"msg":  "generate and start-serial must be greater than 0",
 		}
-		return nil
+		return p.Error()
 	}
 	err := p.gen.GenerateDevices(masterAddress, generate, startSerial)
 	if err != nil {
@@ -70,7 +70,7 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 			"code": http.StatusInternalServerError,
 			"msg":  fmt.Sprintf("failed to generate devices: %v", err),
 		}
-		return nil
+		return p.Error()
 	}
 	response.Data = map[string]interface{}{
 		"code": 0,
@@ -82,4 +82,8 @@ func (p *Plugin) HandleHTTPMessage(ctx context.Context, request *proxy.Request, 
 
 func (p *Plugin) Priority() int {
 	return p.index
+}
+
+func (p *Plugin) Error() error {
+	return fmt.Errorf("failed on plugin: '%s'", p.name)
 }
