@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -341,7 +340,7 @@ func (sim *Simulator) restoreDevices(ctx context.Context) ([]*Device, error) {
 		return nil, err
 	}
 
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +348,7 @@ func (sim *Simulator) restoreDevices(ctx context.Context) ([]*Device, error) {
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") && len(file.Name()) == 15 {
 			filePath := filepath.Join(dir, file.Name())
-			data, err := ioutil.ReadFile(filePath)
+			data, err := os.ReadFile(filePath)
 			if err != nil {
 				return nil, err
 			}

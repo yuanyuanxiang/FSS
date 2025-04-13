@@ -30,7 +30,7 @@ func getOrCreatePrivateKey(path string) (*ecdh.PrivateKey, error) {
 		if saveErr := savePrivateKey(basePath, privateKey); saveErr != nil {
 			return nil, fmt.Errorf("failed to save in both locations: %w", errors.Join(err, saveErr))
 		}
-		path = basePath
+		// path = basePath
 	}
 
 	return privateKey, nil

@@ -83,13 +83,13 @@ func Base64ToPrivateKey(base64Str string) (*ecdh.PrivateKey, error) {
 }
 
 func DeriveKeys(sharedSecret []byte) (encKey, authKey []byte) {
-	// 使用HKDF-SHA256进行密钥派生
+	// Derive keys with HKDF-SHA256
 	hkdf := hkdf.New(sha256.New, sharedSecret, nil, []byte("FIRMWARE_UPDATE_KEYS"))
 
-	encKey = make([]byte, 32)  // AES-256密钥
-	authKey = make([]byte, 32) // HMAC密钥
-	io.ReadFull(hkdf, encKey)
-	io.ReadFull(hkdf, authKey)
+	encKey = make([]byte, 32)  // AES-256
+	authKey = make([]byte, 32) // HMAC
+	_, _ = io.ReadFull(hkdf, encKey)
+	_, _ = io.ReadFull(hkdf, authKey)
 
 	return
 }
