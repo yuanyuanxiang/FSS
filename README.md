@@ -50,7 +50,27 @@ Simulator:
 - simulator --status=`serialNumber` - Show status of a specific device
 - simulator --list-all - List all simulated devices with their status
 - simulator --simulate-replay=`serialNumber` - Simulate a replay attack
-- simulator --simulate-batch-
+- simulator simulate-batch-replay=`startSerial`-`endSerial` - Simulate batch replay attacks
+
+## Main process
+
+![Main process](./images/main_process.jpg)
+
+This image shows the register process and firmware update process. There are 3 steps:
+
+- 1. Device requests for a challenge.
+
+- 2. Device sends message to server to do HMAC verify, a `token` will be responsed if succeed.
+
+- 3. Device sends request to server along with the `token` in its header. The server will response success if the token is verified. The `token` can only be used once.
+
+## HTTP pipeline
+
+![HTTP pipeline](./images/http_pipeline.jpg)
+
+This image shows the HTTP data pipeline which is based on [LURA](https://github.com/yuanyuanxiang/lura).
+
+Each HTTP request will be processed by a serial defined `plugins`, which is specified in `apis.json`.
 
 ## Build the program
 
