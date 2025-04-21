@@ -2,9 +2,12 @@ package server
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -19,19 +22,47 @@ type Executer interface {
 	GetAuditLogs(typ string) ([]map[string]interface{}, error)
 }
 
-func NewExecuter(addr string) Executer {
-	return &ExecuterImpl{
+func NewExecuter(addr string, opts ...Option) (Executer, error) {
+	exe := &ExecuterImpl{
+		protocol:   "http",
 		serverAddr: addr,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 		},
 	}
+	for _, f := range opts {
+		if err := f(exe); err != nil {
+			return nil, err
+		}
+	}
+	return exe, nil
 }
 
 // Send http request to the server and display the results.
 type ExecuterImpl struct {
+	protocol   string
 	serverAddr string
 	client     *http.Client
+}
+
+type Option func(*ExecuterImpl) error
+
+func WithCertFile(certFile string) Option {
+	return func(e *ExecuterImpl) error {
+		caCert, err := ioutil.ReadFile(certFile)
+		if err != nil {
+			return fmt.Errorf("failed to read CA certificate: %v", err)
+		}
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		e.protocol = "https"
+		e.client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: caCertPool,
+			},
+		}
+		return nil
+	}
 }
 
 func (e *ExecuterImpl) request(method, url string, in map[string]interface{}) (map[string]interface{}, error) {
@@ -40,7 +71,7 @@ func (e *ExecuterImpl) request(method, url string, in map[string]interface{}) (m
 		data, _ := json.Marshal(in)
 		body = bytes.NewBuffer(data)
 	}
-	req, err := http.NewRequest(method, fmt.Sprintf("http://%s%s", e.serverAddr, url), body)
+	req, err := http.NewRequest(method, fmt.Sprintf("%s://%s%s", e.protocol, e.serverAddr, url), body)
 	if err != nil {
 		return nil, err
 	}

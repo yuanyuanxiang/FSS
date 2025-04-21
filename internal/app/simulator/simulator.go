@@ -2,10 +2,14 @@ package simulator
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,18 +40,52 @@ const (
 
 // Simulator application
 type Simulator struct {
-	ctx     context.Context
-	mu      sync.Mutex
-	name    string // Module name
-	cfg     string // Configuration file path
-	log     logger.Logger
-	devices []*Device
-	port    int
-	ready   bool
+	ctx      context.Context
+	mu       sync.Mutex
+	name     string // Module name
+	cfg      string // Configuration file path
+	log      logger.Logger
+	devices  []*Device
+	port     int
+	ready    bool
+	protocol string
+	client   *http.Client
 }
 
-func New(log logger.Logger) *Simulator {
-	return &Simulator{log: log, name: "simulator"}
+type Option func(*Simulator) error
+
+func New(log logger.Logger, opts ...Option) *Simulator {
+	sim := &Simulator{
+		log:  log,
+		name: "simulator",
+		client: &http.Client{
+			Timeout: 15 * time.Second,
+		},
+	}
+	for _, f := range opts {
+		if err := f(sim); err != nil {
+			log.Errorf("Failed to apply option: %v", err)
+		}
+	}
+	return sim
+}
+
+func WithCertFile(certFile string) Option {
+	return func(sim *Simulator) error {
+		caCert, err := ioutil.ReadFile(certFile)
+		if err != nil {
+			return fmt.Errorf("failed to read CA certificate: %v", err)
+		}
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		sim.protocol = "https"
+		sim.client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: caCertPool,
+			},
+		}
+		return nil
+	}
 }
 
 func (sim *Simulator) GetName() string {
@@ -75,7 +113,7 @@ func (sim *Simulator) GenerateDevices(master string, count int, startSerial int)
 			sim.log.Printf("Failed to generate device %v: %v\n", id, err)
 			continue
 		}
-		sim.devices = append(sim.devices, device)
+		sim.devices = append(sim.devices, device.SetSimulator(sim))
 		go device.RegisterProc(sim.ctx, 5*time.Second)
 		sim.log.Printf("Generated device: SerialNumber=%v\n", id)
 	}
@@ -213,7 +251,7 @@ func (sim *Simulator) BatchReplay(startSerial, endSerial int) error {
 func (sim *Simulator) Setup(ctx context.Context, args []string) error {
 	// Define flags for the command line arguments
 	f := flag.NewFlagSet(sim.name, flag.ContinueOnError)
-	f.StringVar(&sim.cfg, "config", "D:\\github\\FSS\\internal\\app\\simulator\\apis.json", "Path to the configuration file")
+	f.StringVar(&sim.cfg, "config", "./internal/app/simulator/apis.json", "Path to the configuration file")
 	generateCount := f.Int("generate", 0, "Generate a specified number of devices")
 	startSerial := f.Int("start-serial", -1, "Starting serial number for device generation")
 	updateSerial := f.Int("update", -1, "Request update for a specific device")
@@ -356,7 +394,7 @@ func (sim *Simulator) restoreDevices(ctx context.Context) ([]*Device, error) {
 			if err := json.Unmarshal(data, &device); err != nil {
 				return nil, err
 			}
-
+			device.SetSimulator(sim)
 			devices = append(devices, &device)
 			go device.RegisterProc(ctx, 5*time.Second)
 		}

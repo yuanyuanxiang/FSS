@@ -36,7 +36,7 @@ func main() {
 	// Add submodules
 	app := NewApp(filepath.Base(os.Args[0]), lg)
 	app.AddModule(ctx, server.New("./configs/private_key.pem", lg))
-	app.AddModule(ctx, simulator.New(lg))
+	app.AddModule(ctx, simulator.New(lg, simulator.WithCertFile("./configs/cert.pem")))
 
 	// Parse command line arguments and run the specified service
 	commands := NewArgs(os.Args[1:])

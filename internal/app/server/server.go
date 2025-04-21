@@ -52,7 +52,7 @@ func (svr *Server) GetName() string {
 func (svr *Server) Setup(ctx context.Context, args []string) error {
 	// Define flags for the command line arguments
 	f := flag.NewFlagSet(svr.name, flag.ContinueOnError)
-	f.StringVar(&svr.cfg, "config", "D:\\github\\FSS\\internal\\app\\server\\apis.json", "Path to the configuration file")
+	f.StringVar(&svr.cfg, "config", "./internal/app/server/apis.json", "Path to the configuration file")
 	port := f.Int("port", 0, "Start the server on specified port")
 	allowance := f.Int("allowance", 0, "Set initial device registration allowance")
 	increaseAllowance := f.Int("increase-allowance", 0, "Increase allowance counter")
@@ -67,7 +67,13 @@ func (svr *Server) Setup(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	var exe = NewExecuter(*endpoint)
+	var exe Executer
+	if !(*port > 0 && *allowance > 0) {
+		exe, err = NewExecuter(*endpoint, WithCertFile(certPath))
+		if err != nil {
+			return err
+		}
+	}
 	switch {
 	case *port > 0 && *allowance > 0:
 		svr.port = *port
@@ -163,6 +169,20 @@ func (svr *Server) Run(ctx context.Context) error {
 	if svr.port <= 0 {
 		return nil
 	}
+	// Check if cert exists and is valid
+	if needsNewCert(certPath) {
+		svr.logger.Println("Generate new cert:", certPath)
+		if err := generateSelfSignedCert(certPath, keyPath); err != nil {
+			return err
+		}
+	} else {
+		svr.logger.Println("Use current cert:", certPath)
+	}
+	var tls = config.TLS{
+		IsDisabled: false,
+		PublicKey:  certPath,
+		PrivateKey: keyPath,
+	}
 	logManager := audit.NewManager("svr_log.json")
 	var log, _ = logging.NewLogger("INFO", os.Stdout, "")
 	var srvConf = config.ServiceConfig{
@@ -174,6 +194,7 @@ func (svr *Server) Run(ctx context.Context) error {
 		Port:            svr.port,
 		SequentialStart: true,
 		ExtraConfig:     map[string]interface{}{audit.LOG_MANAGER: logManager}, // pass log manager to all plugins
+		TLS:             &tls,
 	}
 	var err error
 	srvConf.Endpoints, err = readPluginFile(svr.cfg)

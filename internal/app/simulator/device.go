@@ -20,10 +20,6 @@ import (
 
 var log, _ = logger.NewLogger()
 
-var client = &http.Client{
-	Timeout: 15 * time.Second,
-}
-
 // DeviceState represents the device state
 type DeviceState string
 
@@ -49,13 +45,21 @@ type Device struct {
 	PrivateKey      *ecdh.PrivateKey `json:"private_key,omitempty"`
 	PublicKey       *ecdh.PublicKey  `json:"public_key,omitempty"`
 	UpdateHistory   []UpdateRecord   `json:"update_history"`
+	simulator       *Simulator
 }
 
 type Callback func(d *Device, v map[string]interface{}, auth, version string) error
 
+func (d *Device) SetSimulator(s *Simulator) *Device {
+	d.simulator = s
+	return d
+}
+
 func (d *Device) GetChallenge() (string, error) {
 	// get challenge
-	resp, err := client.Get(fmt.Sprintf("http://%s/api/challenge/%s", d.MasterAddress, d.SerialNumber))
+	var client = d.simulator.client
+	var protocol = d.simulator.protocol
+	resp, err := client.Get(fmt.Sprintf("%s://%s/api/challenge/%s", protocol, d.MasterAddress, d.SerialNumber))
 	if err != nil {
 		return "", err
 	}
@@ -80,11 +84,11 @@ func (d *Device) GetToken(challenge string) (string, error) {
 	signature := common.SignSignature(challenge, string(d.SymmetricKey))
 	// verify
 	data, _ := json.Marshal(map[string]interface{}{"serial_number": d.SerialNumber, "signature": signature, "challenge": challenge})
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/verify", d.MasterAddress), bytes.NewBuffer(data))
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s://%s/api/verify", d.simulator.protocol, d.MasterAddress), bytes.NewBuffer(data))
 	if err != nil {
 		return "", err
 	}
-	resp, err := client.Do(req)
+	resp, err := d.simulator.client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -134,12 +138,12 @@ func (d *Device) Register() error {
 	// register
 	pubKeyBase64 := common.PublicKeyToBase64(d.PublicKey)
 	data, _ := json.Marshal(map[string]interface{}{"serial_number": d.SerialNumber, "public_key": pubKeyBase64, "state": d.State})
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/register", d.MasterAddress), bytes.NewBuffer(data))
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s://%s/api/register", d.simulator.protocol, d.MasterAddress), bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", auth)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := d.simulator.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -189,13 +193,13 @@ func (d *Device) Update(callback Callback, version string) error {
 // communicate with server to get firmware
 func getFirmware(d *Device, v map[string]interface{}, auth, version string) error {
 	data, _ := json.Marshal(v)
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/api/firmware/%s", d.MasterAddress, version),
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s://%s/api/firmware/%s", d.simulator.protocol, d.MasterAddress, version),
 		bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", auth)
-	resp, err := client.Do(req)
+	resp, err := d.simulator.client.Do(req)
 	if err != nil {
 		return err
 	}
